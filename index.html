@@ -241,9 +241,8 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
 <div id="puerta">
   <div class="caja">
     <h2>Pasivo de entrenamiento</h2>
-    <p id="puertaTexto">Inicia sesión para ver el tablero.</p>
-    <button class="btn" id="puertaBtn" onclick="entrarConGoogle()">Entrar con Google</button>
-    <button class="btn sec" id="puertaSalir" style="display:none" onclick="salirSesion()">Salir</button>
+    <p id="puertaTexto">Cargando la información...</p>
+    <button class="btn" id="puertaBtn" style="display:none" onclick="location.reload()">Reintentar</button>
   </div>
 </div>
 
@@ -251,7 +250,6 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
   <div class="hrow">
     <h1>Pasivo de entrenamiento</h1>
     <span class="sub" id="subAlcance">Seguimiento diario por aeropuerto</span>
-    <div id="sesion"></div>
   </div>
   <nav>
     <button id="tabTablero" class="on" onclick="verVista('tablero')">Tablero</button>
@@ -294,7 +292,6 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
   <div class="sep"></div>
   <button class="btn sec" id="btnXls" onclick="exportarColores()">Excel con colores</button>
   <button class="btn sec" id="btnXlsx" onclick="exportarXlsx()">Excel (.xlsx)</button>
-  <button class="btn sec soloAdmin" id="btnAccesos" onclick="abrirAccesos()">Accesos</button>
   <button class="btn soloAdmin" id="btnPublicar" onclick="publicarEnBase()">Publicar a la base</button>
   <span id="estadoNube" class="estadoNube soloAdmin"></span>
 </div>
@@ -446,28 +443,6 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
     <div class="pie">
       <button class="btn" onclick="cerrarEstaciones()">Listo</button>
     </div>
-  </div>
-</div>
-
-<!-- ================= MODAL ACCESOS ================= -->
-<div class="fondo" id="fondoAccesos" onclick="if(event.target===this)cerrarAccesos()">
-  <div class="modal" style="max-width:560px">
-    <header>
-      <div class="hrow">
-        <h1>Quién puede ver el tablero</h1>
-        <button class="cerrar" onclick="cerrarAccesos()" aria-label="Cerrar">&times;</button>
-      </div>
-      <div class="sub">Correos de Google autorizados para abrir el tablero publicado. Tu cuenta siempre entra.</div>
-      <div style="height:12px"></div>
-    </header>
-    <div class="cuerpo">
-      <div class="campo" style="margin-bottom:14px">
-        <input type="text" id="nuevoAcceso" placeholder="correo@ejemplo.com" style="min-width:300px">
-        <button class="btn" onclick="agregarAcceso()">Agregar</button>
-      </div>
-      <div id="listaAccesos"></div>
-    </div>
-    <div class="pie"><button class="btn" onclick="cerrarAccesos()">Listo</button></div>
   </div>
 </div>
 
@@ -1984,9 +1959,9 @@ function exportarColores(){
 }
 
 /* ============================================================
-   BASE EN LA NUBE Y SESION
-   El administrador carga el corte y lo publica; quien abre el enlace
-   solo lee. La herramienta sigue funcionando sin conexion, en local.
+   BASE EN LA NUBE
+   Quien abre el enlace solo lee. Para cargar y guardar se entra con
+   la clave al final de la URL:  ...?admin=TUCLAVE
 ============================================================ */
 const FB_CONFIG = {
   apiKey: "AIzaSyA5smuh2L7p-11UKFaKuAk8oXLjxbXhClc",
@@ -1996,64 +1971,39 @@ const FB_CONFIG = {
   messagingSenderId: "736236132829",
   appId: "1:736236132829:web:a899c49793920a6db27e34"
 };
-const CORREO_ADMIN = "edisongrajales1102@gmail.com";
-const TROZO = 400000;      // caracteres por trozo: Firestore no admite documentos de mas de 1 MB
-const PIDE_ADMIN = /(^|[?&])admin(=|&|$)/.test(location.search);
-let fbAuth = null, fbDb = null, fbUser = null, modoApp = "local";
+const TROZO = 400000;      // Firestore no admite documentos de mas de 1 MB
+let CLAVE_ADMIN = "";
+try{ CLAVE_ADMIN = new URLSearchParams(location.search).get("admin") || ""; }catch(e){ CLAVE_ADMIN = ""; }
+let fbDb = null, fbAuth = null, modoApp = "local";
 
-function hayNube(){
-  return typeof firebase !== "undefined" && location.protocol !== "file:";
-}
+function hayNube(){ return typeof firebase !== "undefined" && location.protocol !== "file:"; }
 function esVisor(){ return modoApp === "visor"; }
 
-/* ---------- puerta de entrada ---------- */
-function mostrarPuerta(texto, tipo){      // tipo: "login" | "error" | "aviso"
+function mostrarPuerta(texto, tipo){      // tipo: "cargando" | "error" | "aviso"
   const t = document.getElementById("puertaTexto");
   t.textContent = texto;
   t.className = (tipo === "error") ? "err" : "";
-  document.getElementById("puertaBtn").style.display   = (tipo === "login") ? "" : "none";
-  document.getElementById("puertaSalir").style.display = (tipo === "login") ? "none" : "";
+  document.getElementById("puertaBtn").style.display = (tipo === "error") ? "" : "none";
   document.getElementById("puerta").classList.add("on");
 }
 function cerrarPuerta(){ document.getElementById("puerta").classList.remove("on"); }
 
-function entrarConGoogle(){
-  if(!fbAuth) return;
-  const prov = new firebase.auth.GoogleAuthProvider();
-  prov.setCustomParameters({prompt:"select_account"});
-  fbAuth.signInWithPopup(prov).catch(e=>{
-    mostrarPuerta("No se pudo iniciar sesion: "+((e && e.message) || e), "error");
-  });
-}
-function salirSesion(){
-  if(fbAuth) fbAuth.signOut().then(()=>location.reload()).catch(()=>location.reload());
-}
-
-function pintarSesion(){
-  const s = document.getElementById("sesion");
-  if(!s) return;
-  if(!fbUser){ s.style.display = "none"; s.innerHTML = ""; return; }
-  s.style.display = "flex";
-  s.innerHTML = '<span class="correo">'+esc(fbUser.email || "")+'</span>'
-    + (modoApp === "admin" ? '<span>administrador</span>' : '')
-    + '<button onclick="salirSesion()">Salir</button>';
-}
 function aplicarModo(){
   document.body.dataset.modo = modoApp;
   if(esVisor() && vistaActual !== "tablero") verVista("tablero");
   ajustarKpis();
 }
 
-/* ---------- troceado: Firestore no guarda textos enormes en un documento ---------- */
+/* ---------- troceado ---------- */
 async function guardarTexto(ref, txt, extra){
   const trozos = [];
   for(let i=0;i<txt.length;i+=TROZO) trozos.push(txt.slice(i, i+TROZO));
   if(!trozos.length) trozos.push("");
-  await ref.set(Object.assign({n:trozos.length, actualizado:new Date().toISOString()}, extra || {}));
+  await ref.set(Object.assign({k:CLAVE_ADMIN, n:trozos.length, actualizado:new Date().toISOString()}, extra || {}));
   const sub = ref.collection("trozos");
   const viejos = await sub.get();
   for(const d of viejos.docs){ if(Number(d.id) >= trozos.length) await d.ref.delete(); }
-  for(let i=0;i<trozos.length;i++) await sub.doc(String(i)).set({t:trozos[i]});
+  for(let i=0;i<trozos.length;i++) await sub.doc(String(i)).set({k:CLAVE_ADMIN, t:trozos[i]});
 }
 async function leerTexto(ref, meta){
   if(!meta || !meta.n) return "";
@@ -2070,10 +2020,8 @@ async function traerDeLaBase(){
     const cfgDoc = await cfgRef.get();
     const cortesSnap = await fbDb.collection("cortes").get();
     if(!cfgDoc.exists && cortesSnap.empty){
-      mostrarPuerta(modoApp === "admin"
-        ? "La base esta vacia. Carga el archivo del dia y se publica solo."
-        : "Todavia no hay informacion publicada. Vuelve mas tarde.", "aviso");
-      if(modoApp === "admin"){ cerrarPuerta(); estadoNube("La base esta vacia"); }
+      if(modoApp === "admin"){ cerrarPuerta(); estadoNube("La base esta vacia: carga el archivo del dia"); }
+      else mostrarPuerta("Todavia no hay informacion publicada. Vuelve mas tarde.", "aviso");
       return;
     }
     const base = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[],
@@ -2092,22 +2040,17 @@ async function traerDeLaBase(){
     if(!base.inicial || !cortes.some(c=>c.f === base.inicial)) base.inicial = cortes.length ? cortes[0].f : null;
     ST = base;
     invalidarBases(); invalidarConteos(); refrescarClientes();
-    sellarPublicado();            // lo que acabamos de leer ya esta publicado
+    sellarPublicado();            // lo que acabamos de leer ya esta en la base
     cerrarPuerta();
     pintar();
     if(modoApp === "admin") estadoNube("Al dia con la base · "+horaCorta(), "ok");
   }catch(e){
-    const msg = String((e && e.message) || e);
-    const sinPermiso = /permission|insufficient|PERMISSION_DENIED/i.test(msg);
-    mostrarPuerta(sinPermiso
-      ? "Tu cuenta no tiene acceso a este tablero. Pidele al administrador que la agregue."
-      : "No se pudo leer la base: "+msg, "error");
+    mostrarPuerta("No se pudo leer la base: "+((e && e.message) || e), "error");
   }
 }
 
-/* ---------- publicacion automatica ----------
-   Todo cambio del administrador sube solo a la base, y sube unicamente
-   lo que cambio: el corte recien cargado o la configuracion. ---------- */
+/* ---------- guardado automatico ----------
+   Todo cambio del administrador sube solo, y sube unicamente lo que cambio. */
 let _publicado = {cfg:null, cortes:{}};
 let _timerPub = null, _publicando = false, _pendiente = false;
 
@@ -2143,7 +2086,7 @@ function programarPublicacion(){
 
 async function publicarEnBase(auto){
   if(modoApp !== "admin" || !fbDb){
-    if(!auto) avisar("Solo el administrador puede publicar.","err");
+    if(!auto) avisar("Para guardar en la base entra con la clave al final de la direccion.","err");
     return;
   }
   if(_publicando){ _pendiente = true; return; }
@@ -2157,14 +2100,14 @@ async function publicarEnBase(auto){
 
     const cfg = cfgTexto();
     if(cfg !== _publicado.cfg){
-      await guardarTexto(fbDb.collection("config").doc("general"), cfg, {por: fbUser.email});
+      await guardarTexto(fbDb.collection("config").doc("general"), cfg);
       _publicado.cfg = cfg; subidos++;
     }
     for(const c of ST.cortes){
       const txt = JSON.stringify(c);
       if(_publicado.cortes[c.f] === txt) continue;
       estadoNube("Guardando el corte del "+fechaCorta(c.f)+"...");
-      await guardarTexto(fbDb.collection("cortes").doc(c.f), txt, {f:c.f, por: fbUser.email});
+      await guardarTexto(fbDb.collection("cortes").doc(c.f), txt, {f:c.f});
       _publicado.cortes[c.f] = txt; subidos++;
     }
     const actuales = new Set(ST.cortes.map(c=>c.f));
@@ -2180,9 +2123,10 @@ async function publicarEnBase(auto){
     estadoNube("Guardado en la base · "+horaCorta(), "ok");
     if(!auto && !subidos) avisar("No habia cambios nuevos: la base ya esta al dia.");
   }catch(e){
-    const msg = (e && e.message) || e;
-    estadoNube("No se pudo guardar: "+msg, "err");
-    if(!auto) avisar("No se pudo publicar: "+msg, "err");
+    const msg = String((e && e.message) || e);
+    const clave = /permission|insufficient|PERMISSION_DENIED/i.test(msg);
+    estadoNube(clave ? "La clave de administrador no es correcta" : "No se pudo guardar: "+msg, "err");
+    if(!auto) avisar(clave ? "La clave de administrador no es correcta." : "No se pudo guardar: "+msg, "err");
   }finally{
     _publicando = false;
     if(btn){ btn.disabled = false; btn.textContent = rotulo; }
@@ -2190,74 +2134,36 @@ async function publicarEnBase(auto){
   }
 }
 
-/* ---------- lista de accesos ---------- */
-function abrirAccesos(){
-  if(modoApp !== "admin"){ avisar("Solo el administrador administra los accesos.","err"); return; }
-  document.getElementById("fondoAccesos").classList.add("on");
-  pintarAccesos();
-}
-function cerrarAccesos(){ document.getElementById("fondoAccesos").classList.remove("on"); }
-async function pintarAccesos(){
-  const cont = document.getElementById("listaAccesos");
-  cont.innerHTML = '<p class="ayuda">Cargando...</p>';
-  try{
-    const snap = await fbDb.collection("acceso").get();
-    const correos = []; snap.forEach(d=>correos.push(d.id));
-    correos.sort();
-    let h = '<table class="lista"><thead><tr><th>Correo autorizado</th><th></th></tr></thead><tbody>';
-    if(!correos.length) h += '<tr><td colspan="2">Nadie mas tiene acceso todavia.</td></tr>';
-    correos.forEach(c=>{
-      h += '<tr><td>'+esc(c)+'</td><td><button class="btn sec" data-c="'+esc(c)+'" onclick="quitarAcceso(this.dataset.c)">Quitar</button></td></tr>';
-    });
-    cont.innerHTML = h+'</tbody></table>';
-  }catch(e){
-    cont.innerHTML = '<p class="ayuda">No se pudo leer la lista: '+esc((e && e.message) || e)+'</p>';
-  }
-}
-async function agregarAcceso(){
-  const el = document.getElementById("nuevoAcceso");
-  const correo = (el.value || "").trim().toLowerCase();
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)){ avisar("Escribe un correo valido.","err"); return; }
-  try{
-    await fbDb.collection("acceso").doc(correo).set({agregado:new Date().toISOString(), por: fbUser.email});
-    el.value = "";
-    await pintarAccesos();
-    avisar(correo+" ya puede abrir el tablero.");
-  }catch(e){ avisar("No se pudo agregar: "+((e && e.message) || e), "err"); }
-}
-async function quitarAcceso(correo){
-  if(!confirm("Se le quita el acceso a "+correo+". ¿Continuar?")) return;
-  try{ await fbDb.collection("acceso").doc(correo).delete(); await pintarAccesos(); }
-  catch(e){ avisar("No se pudo quitar: "+((e && e.message) || e), "err"); }
-}
-
-/* ---------- arranque de la nube ---------- */
+/* ---------- arranque ----------
+   La sesion es anonima y silenciosa: nadie escribe correo ni contraseña.
+   Solo sirve para que la base no quede abierta a todo el mundo. */
 function iniciarNube(){
-  if(!hayNube()){
-    modoApp = "local"; aplicarModo();
-    return;   // archivo abierto desde el disco: herramienta completa, sin base
-  }
+  if(!hayNube()){ modoApp = "local"; aplicarModo(); return; }
   try{
     firebase.initializeApp(FB_CONFIG);
-    fbAuth = firebase.auth();
     fbDb = firebase.firestore();
+    fbAuth = firebase.auth();
   }catch(e){
     modoApp = "local"; aplicarModo();
     avisar("No se pudo conectar con la base. La herramienta queda en modo local.","warn");
     return;
   }
-  mostrarPuerta("Inicia sesion con tu cuenta de Google para ver el tablero.", "login");
+  modoApp = CLAVE_ADMIN ? "admin" : "visor";
+  aplicarModo();
+  mostrarPuerta("Cargando la informacion...", "cargando");
+
+  let arrancado = false;
   fbAuth.onAuthStateChanged(u=>{
-    fbUser = u;
-    if(!u){
-      modoApp = "local"; aplicarModo(); pintarSesion();
-      mostrarPuerta("Inicia sesion con tu cuenta de Google para ver el tablero.", "login");
-      return;
-    }
-    const soyAdmin = String(u.email || "").toLowerCase() === CORREO_ADMIN;
-    modoApp = (soyAdmin && PIDE_ADMIN) ? "admin" : "visor";
-    aplicarModo(); pintarSesion();
+    if(!u || arrancado) return;
+    arrancado = true;
     traerDeLaBase();
+  });
+  fbAuth.signInAnonymously().catch(e=>{
+    const msg = String((e && e.message) || e);
+    const apagado = /operation-not-allowed|admin-restricted/i.test(msg);
+    mostrarPuerta(apagado
+      ? "Falta habilitar el acceso anonimo en la consola de Firebase."
+      : "No se pudo conectar con la base: "+msg, "error");
   });
 }
 
