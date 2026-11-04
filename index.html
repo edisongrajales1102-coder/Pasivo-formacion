@@ -153,6 +153,24 @@ table.lista th.orden.act{color:var(--azul)}
 .pill.edit{background:#FFF2CC;color:#7F6000}
 select.u{border:1px solid #CBD5E1;border-radius:5px;padding:3px 6px}
 
+/* ---------- Sesión y modo visor ---------- */
+body[data-modo="visor"] .soloAdmin{display:none !important}
+#sesion{display:none;align-items:center;gap:10px;margin-left:auto;color:#C9DDF0;font-size:13px}
+#sesion .correo{color:#fff;font-weight:600}
+.estadoNube{font-size:12px;color:var(--suave);white-space:nowrap}
+.estadoNube.ok{color:var(--verdeTxt);font-weight:600}
+.estadoNube.err{color:#B42318;font-weight:600}
+#sesion button{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:6px;padding:5px 11px;font-weight:600;font-size:13px}
+#sesion button:hover{background:rgba(255,255,255,.26)}
+#puerta{position:fixed;inset:0;background:var(--fondo);z-index:200;display:none;align-items:center;justify-content:center;padding:24px}
+#puerta.on{display:flex}
+#puerta .caja{background:var(--panel);border:1px solid var(--linea);border-radius:12px;padding:32px 36px;max-width:470px;
+  text-align:center;box-shadow:0 10px 30px rgba(15,25,40,.12)}
+#puerta h2{margin:0 0 10px;font-size:20px;color:var(--azul)}
+#puerta p{margin:0 0 20px;color:var(--suave);font-size:14px;line-height:1.5}
+#puerta p.err{color:#B42318}
+#puerta .btn{margin:0 4px}
+
 /* ---------- Selector de vista: vencidos / por vencer ---------- */
 #grupoModo{gap:0;border:1px solid #BFCEDC;border-radius:7px;overflow:hidden;background:#fff}
 #grupoModo .seg{background:#fff;border:0;padding:7px 15px;font-weight:600;color:var(--azul)}
@@ -214,27 +232,40 @@ select.u{border:1px solid #CBD5E1;border-radius:5px;padding:3px 6px}
   .envoltura{max-width:calc(100% - 16px)}
 }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
-<body>
+<body data-modo="local">
+
+<div id="puerta">
+  <div class="caja">
+    <h2>Pasivo de entrenamiento</h2>
+    <p id="puertaTexto">Inicia sesión para ver el tablero.</p>
+    <button class="btn" id="puertaBtn" onclick="entrarConGoogle()">Entrar con Google</button>
+    <button class="btn sec" id="puertaSalir" style="display:none" onclick="salirSesion()">Salir</button>
+  </div>
+</div>
 
 <header>
   <div class="hrow">
     <h1>Pasivo de entrenamiento</h1>
     <span class="sub" id="subAlcance">Seguimiento diario por aeropuerto</span>
+    <div id="sesion"></div>
   </div>
   <nav>
     <button id="tabTablero" class="on" onclick="verVista('tablero')">Tablero</button>
-    <button id="tabParametros" onclick="verVista('parametros')">Parámetros</button>
-    <button id="tabCursos" onclick="verVista('cursos')">Cursos</button>
-    <button id="tabExcepciones" onclick="verVista('excepciones')">Excepciones</button>
-    <button id="tabDatos" onclick="verVista('datos')">Cortes y datos</button>
+    <button id="tabParametros" class="soloAdmin" onclick="verVista('parametros')">Parámetros</button>
+    <button id="tabCursos" class="soloAdmin" onclick="verVista('cursos')">Cursos</button>
+    <button id="tabExcepciones" class="soloAdmin" onclick="verVista('excepciones')">Excepciones</button>
+    <button id="tabDatos" class="soloAdmin" onclick="verVista('datos')">Cortes y datos</button>
   </nav>
 </header>
 
 <div class="barra">
-  <button class="btn" onclick="elegirArchivo()">Cargar corte del día</button>
+  <button class="btn soloAdmin" onclick="elegirArchivo()">Cargar corte del día</button>
   <input type="file" id="archivo" accept=".csv,.xlsx,.xls,.xlsm" style="display:none" multiple>
-  <div class="campo">
+  <div class="campo soloAdmin">
     <label for="fechaCorte">Fecha del corte</label>
     <input type="date" id="fechaCorte">
   </div>
@@ -242,11 +273,11 @@ select.u{border:1px solid #CBD5E1;border-radius:5px;padding:3px 6px}
     <button type="button" class="seg" data-modo="v" onclick="cambiarModo('v')">Vencidos</button>
     <button type="button" class="seg" data-modo="p" onclick="cambiarModo('p')">Por vencer</button>
   </div>
-  <div class="campo">
+  <div class="campo soloAdmin">
     <label><input type="checkbox" id="noGuardarBog" onchange="cambiarExcluirCarga()"> No guardar BOG</label>
   </div>
   <button class="btn sec" id="btnEstaciones" onclick="abrirEstaciones()">Estaciones</button>
-  <button class="btn sec" id="btnExcepciones" onclick="verVista('excepciones')">Excepciones</button>
+  <button class="btn sec soloAdmin" id="btnExcepciones" onclick="verVista('excepciones')">Excepciones</button>
   <div class="campo">
     <label for="filtroCliente">Cliente</label>
     <select id="filtroCliente" onchange="pintar()"><option value="__ALL__">Todos</option></select>
@@ -263,13 +294,16 @@ select.u{border:1px solid #CBD5E1;border-radius:5px;padding:3px 6px}
   <div class="sep"></div>
   <button class="btn sec" id="btnXls" onclick="exportarColores()">Excel con colores</button>
   <button class="btn sec" id="btnXlsx" onclick="exportarXlsx()">Excel (.xlsx)</button>
+  <button class="btn sec soloAdmin" id="btnAccesos" onclick="abrirAccesos()">Accesos</button>
+  <button class="btn soloAdmin" id="btnPublicar" onclick="publicarEnBase()">Publicar a la base</button>
+  <span id="estadoNube" class="estadoNube soloAdmin"></span>
 </div>
 
 <div id="avisos"></div>
 
 <!-- ================= TABLERO ================= -->
 <section id="vistaTablero">
-  <div id="zonaCarga" class="drop">
+  <div id="zonaCarga" class="drop soloAdmin">
     <h2>Arrastra aquí el archivo del día</h2>
     <p>CSV o Excel con las columnas BASE, CEDULA, NOMBRE, CARGO, CURSO y ESTADO_CURSO (también acepta ESTADO CURSO). Se guardan las filas <b>VENCIDO</b> y <b>POR VENCER</b>. CLIENTE es opcional: si no viene, se deduce del nombre del curso.</p>
     <p class="detalle">Cada carga guarda un corte con su fecha. Se cuentan colaboradores únicos con al menos un curso vencido.</p>
@@ -412,6 +446,28 @@ select.u{border:1px solid #CBD5E1;border-radius:5px;padding:3px 6px}
     <div class="pie">
       <button class="btn" onclick="cerrarEstaciones()">Listo</button>
     </div>
+  </div>
+</div>
+
+<!-- ================= MODAL ACCESOS ================= -->
+<div class="fondo" id="fondoAccesos" onclick="if(event.target===this)cerrarAccesos()">
+  <div class="modal" style="max-width:560px">
+    <header>
+      <div class="hrow">
+        <h1>Quién puede ver el tablero</h1>
+        <button class="cerrar" onclick="cerrarAccesos()" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="sub">Correos de Google autorizados para abrir el tablero publicado. Tu cuenta siempre entra.</div>
+      <div style="height:12px"></div>
+    </header>
+    <div class="cuerpo">
+      <div class="campo" style="margin-bottom:14px">
+        <input type="text" id="nuevoAcceso" placeholder="correo@ejemplo.com" style="min-width:300px">
+        <button class="btn" onclick="agregarAcceso()">Agregar</button>
+      </div>
+      <div id="listaAccesos"></div>
+    </div>
+    <div class="pie"><button class="btn" onclick="cerrarAccesos()">Listo</button></div>
   </div>
 </div>
 
@@ -593,6 +649,8 @@ function unidadDe(cargo){
    PERSISTENCIA
 ============================================================ */
 function guardar(){
+  if(modoApp === "visor") return true;   // el visor nunca escribe sobre los datos del administrador
+  programarPublicacion();                // en modo administrador, todo cambio sube solo a la base
   try{
     localStorage.setItem(CLAVE, JSON.stringify(ST));
     return true;
@@ -702,6 +760,7 @@ function filasDeCsv(texto){
 }
 
 async function procesarArchivos(files){
+  if(esVisor()) return;                  // en el tablero publicado no se cargan archivos
   const fecha = document.getElementById("fechaCorte").value || hoyIso();
   let filas = [];
   try{
@@ -1630,6 +1689,7 @@ function excEnUltimoCorte(){
 }
 
 async function procesarExcepciones(files, modo){
+  if(esVisor()) return;
   let filas = [];
   try{
     for(const f of files){ const r = await leerArchivo(f); if(r && r.length) filas = filas.length ? filas.concat(r) : r; }
@@ -1924,6 +1984,284 @@ function exportarColores(){
 }
 
 /* ============================================================
+   BASE EN LA NUBE Y SESION
+   El administrador carga el corte y lo publica; quien abre el enlace
+   solo lee. La herramienta sigue funcionando sin conexion, en local.
+============================================================ */
+const FB_CONFIG = {
+  apiKey: "AIzaSyA5smuh2L7p-11UKFaKuAk8oXLjxbXhClc",
+  authDomain: "pasivo-formacion.firebaseapp.com",
+  projectId: "pasivo-formacion",
+  storageBucket: "pasivo-formacion.firebasestorage.app",
+  messagingSenderId: "736236132829",
+  appId: "1:736236132829:web:a899c49793920a6db27e34"
+};
+const CORREO_ADMIN = "edisongrajales1102@gmail.com";
+const TROZO = 400000;      // caracteres por trozo: Firestore no admite documentos de mas de 1 MB
+const PIDE_ADMIN = /(^|[?&])admin(=|&|$)/.test(location.search);
+let fbAuth = null, fbDb = null, fbUser = null, modoApp = "local";
+
+function hayNube(){
+  return typeof firebase !== "undefined" && location.protocol !== "file:";
+}
+function esVisor(){ return modoApp === "visor"; }
+
+/* ---------- puerta de entrada ---------- */
+function mostrarPuerta(texto, tipo){      // tipo: "login" | "error" | "aviso"
+  const t = document.getElementById("puertaTexto");
+  t.textContent = texto;
+  t.className = (tipo === "error") ? "err" : "";
+  document.getElementById("puertaBtn").style.display   = (tipo === "login") ? "" : "none";
+  document.getElementById("puertaSalir").style.display = (tipo === "login") ? "none" : "";
+  document.getElementById("puerta").classList.add("on");
+}
+function cerrarPuerta(){ document.getElementById("puerta").classList.remove("on"); }
+
+function entrarConGoogle(){
+  if(!fbAuth) return;
+  const prov = new firebase.auth.GoogleAuthProvider();
+  prov.setCustomParameters({prompt:"select_account"});
+  fbAuth.signInWithPopup(prov).catch(e=>{
+    mostrarPuerta("No se pudo iniciar sesion: "+((e && e.message) || e), "error");
+  });
+}
+function salirSesion(){
+  if(fbAuth) fbAuth.signOut().then(()=>location.reload()).catch(()=>location.reload());
+}
+
+function pintarSesion(){
+  const s = document.getElementById("sesion");
+  if(!s) return;
+  if(!fbUser){ s.style.display = "none"; s.innerHTML = ""; return; }
+  s.style.display = "flex";
+  s.innerHTML = '<span class="correo">'+esc(fbUser.email || "")+'</span>'
+    + (modoApp === "admin" ? '<span>administrador</span>' : '')
+    + '<button onclick="salirSesion()">Salir</button>';
+}
+function aplicarModo(){
+  document.body.dataset.modo = modoApp;
+  if(esVisor() && vistaActual !== "tablero") verVista("tablero");
+  ajustarKpis();
+}
+
+/* ---------- troceado: Firestore no guarda textos enormes en un documento ---------- */
+async function guardarTexto(ref, txt, extra){
+  const trozos = [];
+  for(let i=0;i<txt.length;i+=TROZO) trozos.push(txt.slice(i, i+TROZO));
+  if(!trozos.length) trozos.push("");
+  await ref.set(Object.assign({n:trozos.length, actualizado:new Date().toISOString()}, extra || {}));
+  const sub = ref.collection("trozos");
+  const viejos = await sub.get();
+  for(const d of viejos.docs){ if(Number(d.id) >= trozos.length) await d.ref.delete(); }
+  for(let i=0;i<trozos.length;i++) await sub.doc(String(i)).set({t:trozos[i]});
+}
+async function leerTexto(ref, meta){
+  if(!meta || !meta.n) return "";
+  const sub = await ref.collection("trozos").get();
+  const partes = [];
+  sub.forEach(d=>{ partes[Number(d.id)] = d.data().t || ""; });
+  return partes.join("");
+}
+
+/* ---------- lectura ---------- */
+async function traerDeLaBase(){
+  try{
+    const cfgRef = fbDb.collection("config").doc("general");
+    const cfgDoc = await cfgRef.get();
+    const cortesSnap = await fbDb.collection("cortes").get();
+    if(!cfgDoc.exists && cortesSnap.empty){
+      mostrarPuerta(modoApp === "admin"
+        ? "La base esta vacia. Carga el archivo del dia y se publica solo."
+        : "Todavia no hay informacion publicada. Vuelve mas tarde.", "aviso");
+      if(modoApp === "admin"){ cerrarPuerta(); estadoNube("La base esta vacia"); }
+      return;
+    }
+    const base = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[],
+                  cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"]};
+    if(cfgDoc.exists){
+      const txt = await leerTexto(cfgRef, cfgDoc.data());
+      if(txt) Object.assign(base, JSON.parse(txt));
+    }
+    const cortes = [];
+    for(const d of cortesSnap.docs){
+      const txt = await leerTexto(d.ref, d.data());
+      if(txt) cortes.push(JSON.parse(txt));
+    }
+    cortes.sort((a,b)=> a.f < b.f ? -1 : 1);
+    base.cortes = cortes;
+    if(!base.inicial || !cortes.some(c=>c.f === base.inicial)) base.inicial = cortes.length ? cortes[0].f : null;
+    ST = base;
+    invalidarBases(); invalidarConteos(); refrescarClientes();
+    sellarPublicado();            // lo que acabamos de leer ya esta publicado
+    cerrarPuerta();
+    pintar();
+    if(modoApp === "admin") estadoNube("Al dia con la base · "+horaCorta(), "ok");
+  }catch(e){
+    const msg = String((e && e.message) || e);
+    const sinPermiso = /permission|insufficient|PERMISSION_DENIED/i.test(msg);
+    mostrarPuerta(sinPermiso
+      ? "Tu cuenta no tiene acceso a este tablero. Pidele al administrador que la agregue."
+      : "No se pudo leer la base: "+msg, "error");
+  }
+}
+
+/* ---------- publicacion automatica ----------
+   Todo cambio del administrador sube solo a la base, y sube unicamente
+   lo que cambio: el corte recien cargado o la configuracion. ---------- */
+let _publicado = {cfg:null, cortes:{}};
+let _timerPub = null, _publicando = false, _pendiente = false;
+
+function cfgTexto(){
+  return JSON.stringify({personas:ST.personas, mapa:ST.mapa, cursos:ST.cursos, excepciones:ST.excepciones,
+    unidades:ST.unidades, modos:ST.modos, inicial:ST.inicial, detN:ST.detN,
+    excluidas:ST.excluidas, excluirCarga:ST.excluirCarga, soloAplican:ST.soloAplican});
+}
+function sellarPublicado(){
+  _publicado = {cfg: cfgTexto(), cortes: {}};
+  ST.cortes.forEach(c=>{ _publicado.cortes[c.f] = JSON.stringify(c); });
+}
+function horaCorta(){
+  const d = new Date();
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2,"0");
+  const ap = h < 12 ? "a.m." : "p.m.";
+  h = h % 12 || 12;
+  return h+":"+m+" "+ap;
+}
+function estadoNube(txt, tipo){
+  const e = document.getElementById("estadoNube");
+  if(!e) return;
+  e.textContent = txt || "";
+  e.className = "estadoNube soloAdmin" + (tipo ? " "+tipo : "");
+}
+function programarPublicacion(){
+  if(modoApp !== "admin" || !fbDb) return;
+  clearTimeout(_timerPub);
+  estadoNube("Cambios sin guardar...");
+  _timerPub = setTimeout(()=>publicarEnBase(true), 1200);
+}
+
+async function publicarEnBase(auto){
+  if(modoApp !== "admin" || !fbDb){
+    if(!auto) avisar("Solo el administrador puede publicar.","err");
+    return;
+  }
+  if(_publicando){ _pendiente = true; return; }
+  _publicando = true;
+  const btn = document.getElementById("btnPublicar");
+  const rotulo = btn ? btn.textContent : "";
+  try{
+    if(btn){ btn.disabled = true; btn.textContent = "Guardando..."; }
+    estadoNube("Guardando en la base...");
+    let subidos = 0;
+
+    const cfg = cfgTexto();
+    if(cfg !== _publicado.cfg){
+      await guardarTexto(fbDb.collection("config").doc("general"), cfg, {por: fbUser.email});
+      _publicado.cfg = cfg; subidos++;
+    }
+    for(const c of ST.cortes){
+      const txt = JSON.stringify(c);
+      if(_publicado.cortes[c.f] === txt) continue;
+      estadoNube("Guardando el corte del "+fechaCorta(c.f)+"...");
+      await guardarTexto(fbDb.collection("cortes").doc(c.f), txt, {f:c.f, por: fbUser.email});
+      _publicado.cortes[c.f] = txt; subidos++;
+    }
+    const actuales = new Set(ST.cortes.map(c=>c.f));
+    for(const f of Object.keys(_publicado.cortes)){
+      if(actuales.has(f)) continue;
+      const ref = fbDb.collection("cortes").doc(f);
+      const sub = await ref.collection("trozos").get();
+      for(const t of sub.docs) await t.ref.delete();
+      await ref.delete();
+      delete _publicado.cortes[f];
+      subidos++;
+    }
+    estadoNube("Guardado en la base · "+horaCorta(), "ok");
+    if(!auto && !subidos) avisar("No habia cambios nuevos: la base ya esta al dia.");
+  }catch(e){
+    const msg = (e && e.message) || e;
+    estadoNube("No se pudo guardar: "+msg, "err");
+    if(!auto) avisar("No se pudo publicar: "+msg, "err");
+  }finally{
+    _publicando = false;
+    if(btn){ btn.disabled = false; btn.textContent = rotulo; }
+    if(_pendiente){ _pendiente = false; programarPublicacion(); }
+  }
+}
+
+/* ---------- lista de accesos ---------- */
+function abrirAccesos(){
+  if(modoApp !== "admin"){ avisar("Solo el administrador administra los accesos.","err"); return; }
+  document.getElementById("fondoAccesos").classList.add("on");
+  pintarAccesos();
+}
+function cerrarAccesos(){ document.getElementById("fondoAccesos").classList.remove("on"); }
+async function pintarAccesos(){
+  const cont = document.getElementById("listaAccesos");
+  cont.innerHTML = '<p class="ayuda">Cargando...</p>';
+  try{
+    const snap = await fbDb.collection("acceso").get();
+    const correos = []; snap.forEach(d=>correos.push(d.id));
+    correos.sort();
+    let h = '<table class="lista"><thead><tr><th>Correo autorizado</th><th></th></tr></thead><tbody>';
+    if(!correos.length) h += '<tr><td colspan="2">Nadie mas tiene acceso todavia.</td></tr>';
+    correos.forEach(c=>{
+      h += '<tr><td>'+esc(c)+'</td><td><button class="btn sec" data-c="'+esc(c)+'" onclick="quitarAcceso(this.dataset.c)">Quitar</button></td></tr>';
+    });
+    cont.innerHTML = h+'</tbody></table>';
+  }catch(e){
+    cont.innerHTML = '<p class="ayuda">No se pudo leer la lista: '+esc((e && e.message) || e)+'</p>';
+  }
+}
+async function agregarAcceso(){
+  const el = document.getElementById("nuevoAcceso");
+  const correo = (el.value || "").trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)){ avisar("Escribe un correo valido.","err"); return; }
+  try{
+    await fbDb.collection("acceso").doc(correo).set({agregado:new Date().toISOString(), por: fbUser.email});
+    el.value = "";
+    await pintarAccesos();
+    avisar(correo+" ya puede abrir el tablero.");
+  }catch(e){ avisar("No se pudo agregar: "+((e && e.message) || e), "err"); }
+}
+async function quitarAcceso(correo){
+  if(!confirm("Se le quita el acceso a "+correo+". ¿Continuar?")) return;
+  try{ await fbDb.collection("acceso").doc(correo).delete(); await pintarAccesos(); }
+  catch(e){ avisar("No se pudo quitar: "+((e && e.message) || e), "err"); }
+}
+
+/* ---------- arranque de la nube ---------- */
+function iniciarNube(){
+  if(!hayNube()){
+    modoApp = "local"; aplicarModo();
+    return;   // archivo abierto desde el disco: herramienta completa, sin base
+  }
+  try{
+    firebase.initializeApp(FB_CONFIG);
+    fbAuth = firebase.auth();
+    fbDb = firebase.firestore();
+  }catch(e){
+    modoApp = "local"; aplicarModo();
+    avisar("No se pudo conectar con la base. La herramienta queda en modo local.","warn");
+    return;
+  }
+  mostrarPuerta("Inicia sesion con tu cuenta de Google para ver el tablero.", "login");
+  fbAuth.onAuthStateChanged(u=>{
+    fbUser = u;
+    if(!u){
+      modoApp = "local"; aplicarModo(); pintarSesion();
+      mostrarPuerta("Inicia sesion con tu cuenta de Google para ver el tablero.", "login");
+      return;
+    }
+    const soyAdmin = String(u.email || "").toLowerCase() === CORREO_ADMIN;
+    modoApp = (soyAdmin && PIDE_ADMIN) ? "admin" : "visor";
+    aplicarModo(); pintarSesion();
+    traerDeLaBase();
+  });
+}
+
+/* ============================================================
    NAVEGACIÓN
 ============================================================ */
 function verVista(v){
@@ -1943,6 +2281,7 @@ cargar();
 document.getElementById("fechaCorte").value = hoyIso();
 refrescarClientes();
 pintar();
+iniciarNube();
 </script>
 </body>
 </html>
