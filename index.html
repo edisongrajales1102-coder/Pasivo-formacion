@@ -112,10 +112,6 @@ nav button.on{background:var(--fondo);color:var(--azul);font-weight:600}
 .panelU th.cum:last-child{width:106px}
 .panelU .sub{display:block;font-size:10px;font-weight:400;color:#E4ECF4}
 .panelU th.ini .sub{color:#EDEDED}
-.granTot{flex:0 0 auto;width:100%;background:var(--panel);border:1px solid var(--linea);border-radius:8px;overflow:auto}
-.granTot table.matriz{width:100%}
-.granTot td.base{width:126px}
-.granTot .rot{display:block;font-size:10px;font-weight:600;opacity:.8;letter-spacing:.2px}
 .tend{margin:16px 20px 40px;background:var(--panel);border:1px solid var(--linea);border-radius:8px}
 .tend-h{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--linea);flex-wrap:wrap}
 .tend-mes{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--suave)}
@@ -1138,8 +1134,6 @@ function ajustarKpis(){
   const disponible = document.documentElement.clientWidth - 40;
   const ancho = Math.min(medido, disponible)+"px";
   kpis.style.width = ancho;
-  const gt = document.getElementById("granTot");
-  if(gt) gt.style.width = ancho;
 }
 let _kpiTimer = null;
 window.addEventListener("resize", ()=>{ clearTimeout(_kpiTimer); _kpiTimer = setTimeout(()=>{ ajustarKpis(); pintarTendencia(); }, 150); });
@@ -1168,7 +1162,7 @@ function html(inicial, resto, ultimo, cli){
     h += '</tbody></table></div>';
   });
   if(!h) h = '<div class="panelU" style="padding:16px;color:var(--suave)">No hay datos para las unidades que se están midiendo.</div>';
-  return h + filaTotalGeneral(inicial, ultimo, cli, unidades);
+  return h;   // el total general son los KPIs de arriba, calculados sobre las mismas unidades
 }
 
 function fila(base, etiqueta, u, inicial, ultimo, cli, clase){
@@ -1182,17 +1176,6 @@ function fila(base, etiqueta, u, inicial, ultimo, cli, clase){
   h += '<td class="cerr">'+cerr+'</td>';
   h += '<td class="pct '+(ini? (cerr/ini>=0.98?"baja":(cerr/ini>=0.8?"igual":"")) :"")+'">'+(ini? Math.round(cerr/ini*100)+"%" : "—")+'</td>';
   return h+'</tr>';
-}
-
-function filaTotalGeneral(inicial, ultimo, cli, unidades){
-  const v = c => unidades.reduce((s,u)=>s+totalUnidad(c,u,cli),0);
-  const ini = v(inicial), act = v(ultimo), cerr = ini-act;
-  const cel = (txt, val, clase) => '<td'+(clase?' class="'+clase+'"':'')+'><span class="rot">'+txt+'</span>'+val+'</td>';
-  return '<div class="granTot" id="granTot"><table class="matriz"><tbody><tr class="granTotal">'
-    + '<td class="base">Total general</td>'
-    + cel("Inicial", ini) + cel("Día actual", act) + cel("Cerrados", cerr, "cerr")
-    + cel("Cumplimiento", (ini? Math.round(cerr/ini*100)+"%" : "—"))
-    + '</tr></tbody></table></div>';
 }
 
 /* Clic en una celda -> detalle */
