@@ -1191,7 +1191,7 @@ document.addEventListener("click", e=>{
    (Inicial - pendientes) / Inicial, igual que la columna de la tabla.
 ============================================================ */
 const TEND_COL = {R:"#1A6FB5", P:"#C2690A", O:"#7A4FA3"};
-const TEND = {L:42, R:16, T:22, B:30, H:300, MIN:400};
+const TEND = {L:42, R:30, T:22, B:30, H:300, MIN:400};
 let _tendDatos = null, _tendMes = null;
 
 function metaValor(){
@@ -1282,11 +1282,12 @@ function pintarTendencia(){
 
   // El SVG se dibuja a la medida real de la tarjeta para que el texto no se achique
   const W = Math.max(TEND.MIN, Math.round(cont.clientWidth) || TEND.MIN);
-  const H = TEND.H, dias = d.dias;
+  const H = TEND.H;
   const pw = W - TEND.L - TEND.R, ph = H - TEND.T - TEND.B;
-  const X = dia => TEND.L + (dias<2 ? pw/2 : pw*(dia-1)/(dias-1));
+  const pts = d.series[0].puntos, n = pts.length;     // el eje son los cortes cargados
+  const X = i => TEND.L + (n<2 ? pw/2 : pw*i/(n-1));
   const Y = v => TEND.T + ph - (Math.max(0,Math.min(100,v))/100)*ph;
-  d.W = W; d.X = X; d.Y = Y;
+  d.W = W; d.X = X; d.Y = Y; d.n = n;
 
   let g = "";
   for(let v=0; v<=100; v+=20){
@@ -1294,19 +1295,15 @@ function pintarTendencia(){
     g += '<line x1="'+TEND.L+'" y1="'+y+'" x2="'+(W-TEND.R)+'" y2="'+y+'" stroke="#ECEFF3" stroke-width="1"/>'
        + '<text x="'+(TEND.L-7)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="#667085">'+v+'%</text>';
   }
-  // Los domingos llevan una linea tenue para leer las semanas de un vistazo
-  for(let i=1;i<=dias;i++){
-    if(!esDomingoDia(d.mes, i)) continue;
-    g += '<line x1="'+X(i)+'" y1="'+TEND.T+'" x2="'+X(i)+'" y2="'+(TEND.T+ph)+'" stroke="#F1F4F8" stroke-width="1"/>';
-  }
   g += '<line x1="'+TEND.L+'" y1="'+Y(0)+'" x2="'+(W-TEND.R)+'" y2="'+Y(0)+'" stroke="#D5DBE1" stroke-width="1"/>';
-  const espacio = dias<2 ? pw : pw/(dias-1);
-  const paso = Math.max(1, Math.ceil(22/espacio));
-  for(let i=1;i<=dias;i++){
-    if((i-1)%paso && i!==dias) continue;
-    if(i!==dias && X(dias)-X(i) < 14) continue;      // no se encima con el ultimo dia
-    g += '<text x="'+X(i)+'" y="'+(TEND.T+ph+17)+'" text-anchor="middle" font-size="11" fill="#667085">'+i+'</text>';
-  }
+  const espacio = n<2 ? pw : pw/(n-1);
+  const paso = Math.max(1, Math.ceil(38/espacio));
+  pts.forEach((p,i)=>{
+    if(i%paso && i!==n-1) return;
+    if(i!==n-1 && X(n-1)-X(i) < 30) return;          // no se encima con el ultimo corte
+    g += '<text x="'+X(i)+'" y="'+(TEND.T+ph+17)+'" text-anchor="middle" font-size="11" fill="#667085">'
+       + letraDia(p.f)+' '+p.dia+'</text>';
+  });
   const ym = Y(meta);
   g += '<line x1="'+TEND.L+'" y1="'+ym+'" x2="'+(W-TEND.R)+'" y2="'+ym+'" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="7 5"/>'
      + '<text x="'+(W-TEND.R)+'" y="'+(ym-6)+'" text-anchor="end" font-size="11" font-weight="700" fill="#7A7A7A">Meta '+meta+'%</text>';
@@ -1315,13 +1312,13 @@ function pintarTendencia(){
     let solido = "", saltos = "";
     for(let i=1;i<s.puntos.length;i++){
       const a = s.puntos[i-1], b = s.puntos[i];
-      const seg = "M"+X(a.dia).toFixed(1)+" "+Y(a.pct).toFixed(1)+"L"+X(b.dia).toFixed(1)+" "+Y(b.pct).toFixed(1);
+      const seg = "M"+X(i-1).toFixed(1)+" "+Y(a.pct).toFixed(1)+"L"+X(i).toFixed(1)+" "+Y(b.pct).toFixed(1);
       if(b.dia-a.dia === 1) solido += seg; else saltos += seg;   // dia sin corte: tramo punteado
     }
     if(solido) g += '<path d="'+solido+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linecap="round"/>';
     if(saltos) g += '<path d="'+saltos+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4" opacity=".7"/>';
-    s.puntos.forEach(p=>{
-      g += '<circle cx="'+X(p.dia).toFixed(1)+'" cy="'+Y(p.pct).toFixed(1)+'" r="4.5" fill="'+s.color+'" stroke="#fff" stroke-width="2"/>';
+    s.puntos.forEach((p,i)=>{
+      g += '<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.pct).toFixed(1)+'" r="4.5" fill="'+s.color+'" stroke="#fff" stroke-width="2"/>';
     });
   });
 
@@ -1330,7 +1327,7 @@ function pintarTendencia(){
   d.series.forEach(s=>{
     let ultX = Infinity;
     for(let i=s.puntos.length-1;i>=0;i--){
-      const p = s.puntos[i], x = X(p.dia);
+      const p = s.puntos[i], x = X(i);
       if(i!==s.puntos.length-1 && ultX-x < 30) continue;
       ultX = x;
       rot.push({x:x, y:Y(p.pct)-10, txt:p.pct+"%"});
@@ -1344,8 +1341,9 @@ function pintarTendencia(){
   });
   rot.forEach(r=>{
     const y = Math.max(TEND.T+9, Math.min(r.y, TEND.T+ph-2));
+    const rx = Math.max(TEND.L+2, Math.min(r.x, W-15));   // el ultimo no se sale de la tarjeta
     // halo blanco para que el numero se lea aunque caiga sobre la linea
-    g += '<text x="'+r.x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#1B2430"'
+    g += '<text x="'+rx.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#1B2430"'
        + ' stroke="#fff" stroke-width="3" paint-order="stroke">'+r.txt+'</text>';
   });
 
@@ -1357,7 +1355,6 @@ function pintarTendencia(){
 
   const noms = d.series.map(s=>s.nombre);
   const lista = noms.length<2 ? noms.join("") : noms.slice(0,-1).join(", ")+" y "+noms[noms.length-1];
-  const n = d.series[0].puntos.length;
   pie.textContent = "Cumplimiento = (Inicial - pendientes) / Inicial  ·  "+nombreModos()
     + "  ·  "+lista+"  ·  "+n+(n===1?" corte en ":" cortes en ")+nombreMes(d.mes);
 }
@@ -1371,12 +1368,12 @@ function tendSeguir(ev){
   const r = svg.getBoundingClientRect();
   if(!r.width) return;
   const x = (ev.clientX - r.left) * (d.W / r.width);
-  let dia = null, mejor = 1e9;
-  d.series[0].puntos.forEach(p=>{ const q = Math.abs(d.X(p.dia)-x); if(q<mejor){ mejor=q; dia=p.dia; } });
-  if(dia===null) return;
-  const cx = d.X(dia);
+  let idx = -1, mejor = 1e9;
+  d.series[0].puntos.forEach((p,i)=>{ const q = Math.abs(d.X(i)-x); if(q<mejor){ mejor=q; idx=i; } });
+  if(idx<0) return;
+  const cx = d.X(idx);
   const filas = [];
-  d.series.forEach(s=>{ const p = s.puntos.find(q=>q.dia===dia); if(p) filas.push({s:s, p:p}); });
+  d.series.forEach(s=>{ const p = s.puntos[idx]; if(p) filas.push({s:s, p:p}); });
   if(!filas.length) return;
   const an = 192, al = 28 + filas.length*16;
   let bx = (cx > d.W/2) ? cx-an-10 : cx+10;
