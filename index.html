@@ -1115,16 +1115,17 @@ function pintar(){
     kpi(ST.cortes.length, "Cortes cargados");
 
   document.getElementById("tabla").innerHTML = html(inicial, resto, ultimo, cli);
-  pintarTendencia();
   ajustarKpis();
+  pintarTendencia();
 }
 
 /* Los KPIs toman el ancho de la tabla, para que los dos bloques queden alineados */
 function ajustarKpis(){
   const kpis = document.getElementById("kpis");
   if(!kpis) return;
+  const tend = document.getElementById("tendencia");
   const paneles = [...document.querySelectorAll("#tabla .panelU")];
-  if(!paneles.length){ kpis.style.width = ""; return; }   // sin cortes: ancho natural
+  if(!paneles.length){ kpis.style.width = ""; if(tend) tend.style.width = ""; return; }   // sin cortes: ancho natural
   // Ancho que ocupa la fila de paneles, para que KPIs y Total general queden alineados
   let izq = Infinity, der = -Infinity;
   paneles.forEach(p=>{ const r = p.getBoundingClientRect(); izq = Math.min(izq, r.left); der = Math.max(der, r.right); });
@@ -1134,6 +1135,7 @@ function ajustarKpis(){
   const disponible = document.documentElement.clientWidth - 40;
   const ancho = Math.min(medido, disponible)+"px";
   kpis.style.width = ancho;
+  if(tend) tend.style.width = Math.min(Math.max(medido, TEND.MIN), disponible)+"px";
 }
 let _kpiTimer = null;
 window.addEventListener("resize", ()=>{ clearTimeout(_kpiTimer); _kpiTimer = setTimeout(()=>{ ajustarKpis(); pintarTendencia(); }, 150); });
