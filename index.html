@@ -101,8 +101,14 @@ nav button.on{background:var(--fondo);color:var(--azul);font-weight:600}
 .kpi.ok .n{color:var(--verdeTxt)}
 
 /* ---------- Tendencia ---------- */
-.tend{margin:0 20px 40px;background:var(--panel);border:1px solid var(--linea);border-radius:8px;box-sizing:content-box}
-.tend-h{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--linea)}
+.filaTablero{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin:16px 20px 40px}
+.filaTablero>.envoltura{margin:0;flex:0 0 auto}
+.tend{background:var(--panel);border:1px solid var(--linea);border-radius:8px;flex:1 1 440px;min-width:440px}
+.tend-h{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--linea);flex-wrap:wrap}
+.tend-mes{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--suave)}
+.tend-mes span{min-width:104px;text-align:center}
+.tend-mes button{border:1px solid var(--linea);background:var(--panel);color:var(--azul);border-radius:4px;padding:1px 7px;cursor:pointer;font-size:11px;line-height:1.6}
+.tend-mes button:disabled{color:#C3C9D2;cursor:default}
 .tend-h h3{margin:0;font-size:14px;color:var(--azul);font-weight:700}
 .tend-meta{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--suave)}
 .tend-meta input{width:62px;padding:3px 6px;border:1px solid var(--linea);border-radius:4px;font:inherit;text-align:right}
@@ -321,16 +327,19 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
     <p class="detalle">Cada carga guarda un corte con su fecha. Se cuentan colaboradores únicos con al menos un curso vencido.</p>
   </div>
   <div id="kpis" class="kpis" style="display:none"></div>
+  <div class="filaTablero">
   <div id="tabla" class="envoltura" style="display:none"></div>
 
   <div id="tendencia" class="tend" style="display:none">
     <div class="tend-h">
-      <h3>Tendencia de cumplimiento por proceso</h3>
+      <h3>Tendencia de cumplimiento</h3>
+      <div class="tend-mes"><button type="button" id="mesAnt" onclick="moverMes(-1)" title="Mes anterior">&#9664;</button><span id="tendMes"></span><button type="button" id="mesSig" onclick="moverMes(1)" title="Mes siguiente">&#9654;</button></div>
       <div class="tend-meta"><label for="metaPct">Meta</label><input type="number" id="metaPct" min="0" max="100" step="1" onchange="cambiarMeta()"><span>%</span></div>
     </div>
     <div class="tend-leg" id="tendLeg"></div>
     <div class="tend-svg" id="tendSvg"></div>
     <div class="tend-pie" id="tendPie"></div>
+  </div>
   </div>
 </section>
 
@@ -1107,18 +1116,16 @@ function pintar(){
 function ajustarKpis(){
   const kpis = document.getElementById("kpis");
   if(!kpis) return;
-  const tend = document.getElementById("tendencia");
   const tabla = document.querySelector("#tabla table.matriz");
-  if(!tabla){ kpis.style.width = ""; if(tend) tend.style.width = ""; return; }   // sin cortes: ancho natural
+  if(!tabla){ kpis.style.width = ""; return; }   // sin cortes: ancho natural
   const medido = Math.round(tabla.getBoundingClientRect().width);
   // Si el tablero está en otra pestaña la tabla mide 0: se conserva el ancho que ya tenía.
   if(medido <= 0) return;
   const disponible = document.documentElement.clientWidth - 40;
   kpis.style.width = Math.min(medido, disponible)+"px";
-  if(tend) tend.style.width = Math.min(medido, disponible)+"px";
 }
 let _kpiTimer = null;
-window.addEventListener("resize", ()=>{ clearTimeout(_kpiTimer); _kpiTimer = setTimeout(ajustarKpis, 120); });
+window.addEventListener("resize", ()=>{ clearTimeout(_kpiTimer); _kpiTimer = setTimeout(()=>{ ajustarKpis(); pintarTendencia(); }, 150); });
 function kpi(n,l,ok){ return '<div class="kpi'+(ok?" ok":"")+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
 
 function html(inicial, resto, ultimo, cli){
@@ -1198,8 +1205,8 @@ document.addEventListener("click", e=>{
    (Inicial - pendientes) / Inicial, igual que la columna de la tabla.
 ============================================================ */
 const TEND_COL = {R:"#1A6FB5", P:"#C2690A", O:"#7A4FA3"};
-const TEND = {L:46, R:96, T:14, B:30, W:1000, H:300};
-let _tendDatos = null;
+const TEND = {L:42, R:16, T:22, B:30, H:300, MIN:400};
+let _tendDatos = null, _tendMes = null;
 
 function metaValor(){
   const m = Number(ST.meta);
@@ -1215,30 +1222,48 @@ function cambiarMeta(){
   guardar();
   pintarTendencia();
 }
-function tendX(i, n){
-  const pw = TEND.W - TEND.L - TEND.R;
-  return n<2 ? TEND.L+pw/2 : TEND.L + pw*i/(n-1);
+/* ---- mes que se esta mirando ---- */
+function mesesConCortes(){
+  const s = new Set();
+  ST.cortes.forEach(c=> s.add(String(c.f).slice(0,7)));
+  return [...s].sort();
 }
-function tendY(v){
-  const ph = TEND.H - TEND.T - TEND.B;
-  return TEND.T + ph - (Math.max(0,Math.min(100,v))/100)*ph;
+function mesActivo(){
+  const ms = mesesConCortes();
+  if(!ms.length) return null;
+  return ms.indexOf(_tendMes)>=0 ? _tendMes : ms[ms.length-1];
 }
-/* Serie por unidad medida, sobre los cortes visibles y el cliente filtrado */
+function moverMes(d){
+  const ms = mesesConCortes(), i = ms.indexOf(mesActivo()) + d;
+  if(i<0 || i>=ms.length) return;
+  _tendMes = ms[i];
+  pintarTendencia();
+}
+function nombreMes(m){ const p = m.split("-"); return MESES[Number(p[1])-1]+" "+p[0]; }
+function diasDelMes(m){ const p = m.split("-"); return new Date(Number(p[0]), Number(p[1]), 0).getDate(); }
+function esDomingoDia(m, dia){ const p = m.split("-"); return new Date(Number(p[0]), Number(p[1])-1, dia).getDay()===0; }
+
+/* Serie por unidad medida. El porcentaje siempre se mide contra el corte
+   Inicial, aunque sea de otro mes, para que no se reinicie al cambiar de mes. */
 function datosTendencia(cli){
   const {inicial, resto} = cortesVisibles();
   if(!inicial) return null;
+  const mes = mesActivo();
+  if(!mes) return null;
   const cortes = [inicial].concat(resto);
   const series = [];
   unidadesVisibles().forEach(u=>{
     const base = totalUnidad(inicial, u, cli);
-    if(base<=0) return;                      // sin pasivo inicial no hay nada que medir
-    series.push({u:u, nombre:UNI[u], color:TEND_COL[u], base:base,
-      puntos: cortes.map(c=>{
-        const pend = totalUnidad(c, u, cli);
-        return {f:c.f, pend:pend, pct: Math.round((base-pend)/base*100)};
-      })});
+    if(base<=0) return;                       // sin pasivo inicial no hay nada que medir
+    const puntos = [];
+    cortes.forEach(c=>{
+      if(String(c.f).slice(0,7)!==mes) return;
+      const pend = totalUnidad(c, u, cli);
+      puntos.push({f:c.f, dia:fechaObj(c.f).getDate(), pend:pend, pct:Math.round((base-pend)/base*100)});
+    });
+    if(puntos.length) series.push({u:u, nombre:UNI[u], color:TEND_COL[u], base:base, puntos:puntos});
   });
-  return {cortes:cortes, series:series, resto:resto.length};
+  return {mes:mes, dias:diasDelMes(mes), series:series};
 }
 
 function pintarTendencia(){
@@ -1250,14 +1275,17 @@ function pintarTendencia(){
   const cli = document.getElementById("filtroCliente").value;
   const d = _tendDatos = datosTendencia(cli);
   const leg = document.getElementById("tendLeg");
-  const graf = document.getElementById("tendSvg");
+  const cont = document.getElementById("tendSvg");
   const pie = document.getElementById("tendPie");
+  const rotMes = document.getElementById("tendMes");
+  const ms = mesesConCortes(), im = ms.indexOf(mesActivo());
+  rotMes.textContent = d ? nombreMes(d.mes) : "";
+  document.getElementById("mesAnt").disabled = im<=0;
+  document.getElementById("mesSig").disabled = im<0 || im>=ms.length-1;
 
-  if(!d || !d.series.length || d.resto<1){
+  if(!d || !d.series.length){
     leg.innerHTML = "";
-    graf.innerHTML = '<div class="tend-vacio">'+
-      (!d || !d.series.length ? "No hay pasivo inicial en las unidades que se estan midiendo."
-                              : "Se necesita al menos un corte despues del inicial para dibujar la tendencia.")+'</div>';
+    cont.innerHTML = '<div class="tend-vacio">No hay pasivo inicial en las unidades que se estan midiendo.</div>';
     pie.textContent = "";
     return;
   }
@@ -1266,50 +1294,76 @@ function pintarTendencia(){
   leg.innerHTML = d.series.map(s=>'<span><i style="background:'+s.color+'"></i>'+esc(s.nombre)+'</span>').join("")
     + '<span><i class="pun"></i>Meta '+meta+'%</span>';
 
-  const n = d.cortes.length;
+  // El SVG se dibuja a la medida real de la tarjeta para que el texto no se achique
+  const W = Math.max(TEND.MIN, Math.round(cont.clientWidth) || TEND.MIN);
+  const H = TEND.H, dias = d.dias;
+  const pw = W - TEND.L - TEND.R, ph = H - TEND.T - TEND.B;
+  const X = dia => TEND.L + (dias<2 ? pw/2 : pw*(dia-1)/(dias-1));
+  const Y = v => TEND.T + ph - (Math.max(0,Math.min(100,v))/100)*ph;
+  d.W = W; d.X = X; d.Y = Y;
+
   let g = "";
   for(let v=0; v<=100; v+=20){
-    const y = tendY(v);
-    g += '<line x1="'+TEND.L+'" y1="'+y+'" x2="'+(TEND.W-TEND.R)+'" y2="'+y+'" stroke="#ECEFF3" stroke-width="1"/>'
-       + '<text x="'+(TEND.L-8)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="#667085">'+v+'%</text>';
+    const y = Y(v);
+    g += '<line x1="'+TEND.L+'" y1="'+y+'" x2="'+(W-TEND.R)+'" y2="'+y+'" stroke="#ECEFF3" stroke-width="1"/>'
+       + '<text x="'+(TEND.L-7)+'" y="'+(y+4)+'" text-anchor="end" font-size="11" fill="#667085">'+v+'%</text>';
   }
-  g += '<line x1="'+TEND.L+'" y1="'+tendY(0)+'" x2="'+(TEND.W-TEND.R)+'" y2="'+tendY(0)+'" stroke="#D5DBE1" stroke-width="1"/>';
-  // Con muchos cortes se rotulan de forma salteada para que no se encimen
-  const paso = Math.ceil(n/18);
-  d.cortes.forEach((c,i)=>{
-    if(i%paso && i!==n-1) return;
-    g += '<text x="'+tendX(i,n)+'" y="'+(TEND.H-TEND.B+18)+'" text-anchor="middle" font-size="11" fill="#667085">'
-       + letraDia(c.f)+' '+diaNum(c.f)+'</text>';
-  });
-  const ym = tendY(meta);
-  g += '<line x1="'+TEND.L+'" y1="'+ym+'" x2="'+(TEND.W-TEND.R)+'" y2="'+ym+'" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="7 5"/>';
+  // Los domingos llevan una linea tenue para leer las semanas de un vistazo
+  for(let i=1;i<=dias;i++){
+    if(!esDomingoDia(d.mes, i)) continue;
+    g += '<line x1="'+X(i)+'" y1="'+TEND.T+'" x2="'+X(i)+'" y2="'+(TEND.T+ph)+'" stroke="#F1F4F8" stroke-width="1"/>';
+  }
+  g += '<line x1="'+TEND.L+'" y1="'+Y(0)+'" x2="'+(W-TEND.R)+'" y2="'+Y(0)+'" stroke="#D5DBE1" stroke-width="1"/>';
+  const espacio = dias<2 ? pw : pw/(dias-1);
+  const paso = Math.max(1, Math.ceil(22/espacio));
+  for(let i=1;i<=dias;i++){
+    if((i-1)%paso && i!==dias) continue;
+    if(i!==dias && X(dias)-X(i) < 14) continue;      // no se encima con el ultimo dia
+    g += '<text x="'+X(i)+'" y="'+(TEND.T+ph+17)+'" text-anchor="middle" font-size="11" fill="#667085">'+i+'</text>';
+  }
+  const ym = Y(meta);
+  g += '<line x1="'+TEND.L+'" y1="'+ym+'" x2="'+(W-TEND.R)+'" y2="'+ym+'" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="7 5"/>'
+     + '<text x="'+(W-TEND.R)+'" y="'+(ym-6)+'" text-anchor="end" font-size="11" font-weight="700" fill="#7A7A7A">Meta '+meta+'%</text>';
 
-  const rotulos = [];
   d.series.forEach(s=>{
-    const dd = s.puntos.map((p,i)=> (i?"L":"M")+tendX(i,n).toFixed(1)+" "+tendY(p.pct).toFixed(1)).join(" ");
-    g += '<path d="'+dd+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
-    if(n<=26) s.puntos.forEach((p,i)=>{
-      g += '<circle cx="'+tendX(i,n)+'" cy="'+tendY(p.pct)+'" r="4" fill="'+s.color+'" stroke="#fff" stroke-width="2"/>';
+    let solido = "", saltos = "";
+    for(let i=1;i<s.puntos.length;i++){
+      const a = s.puntos[i-1], b = s.puntos[i];
+      const seg = "M"+X(a.dia).toFixed(1)+" "+Y(a.pct).toFixed(1)+"L"+X(b.dia).toFixed(1)+" "+Y(b.pct).toFixed(1);
+      if(b.dia-a.dia === 1) solido += seg; else saltos += seg;   // dia sin corte: tramo punteado
+    }
+    if(solido) g += '<path d="'+solido+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linecap="round"/>';
+    if(saltos) g += '<path d="'+saltos+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4" opacity=".7"/>';
+    s.puntos.forEach(p=>{
+      g += '<circle cx="'+X(p.dia).toFixed(1)+'" cy="'+Y(p.pct).toFixed(1)+'" r="4.5" fill="'+s.color+'" stroke="#fff" stroke-width="2"/>';
     });
-    const u = s.puntos[n-1];
-    rotulos.push({y: tendY(u.pct), color: s.color, txt: s.nombre+" "+u.pct+"%"});
-  });
-  // Cuando dos lineas terminan juntas, los rotulos se separan para que no se encimen
-  rotulos.push({y: ym, color:"#7A7A7A", txt:"Meta "+meta+"%"});
-  rotulos.sort((a,b)=> a.y-b.y);
-  for(let i=1;i<rotulos.length;i++){
-    if(rotulos[i].y - rotulos[i-1].y < 15) rotulos[i].y = rotulos[i-1].y + 15;
-  }
-  const tope = TEND.H - TEND.B;
-  for(let i=rotulos.length-1;i>=0;i--){
-    if(rotulos[i].y > tope) rotulos[i].y = tope;
-    if(i && rotulos[i].y - rotulos[i-1].y < 15) rotulos[i-1].y = rotulos[i].y - 15;
-  }
-  rotulos.forEach(r=>{
-    g += '<text x="'+(TEND.W-TEND.R+6)+'" y="'+(r.y+4)+'" font-size="12" font-weight="700" fill="'+r.color+'">'+esc(r.txt)+'</text>';
   });
 
-  graf.innerHTML = '<svg id="tendGraf" viewBox="0 0 '+TEND.W+' '+TEND.H+'" preserveAspectRatio="xMidYMid meet" '
+  // El % de cada corte sobre su punto; si dos quedan muy juntos se saltea uno
+  const rot = [];
+  d.series.forEach(s=>{
+    let ultX = Infinity;
+    for(let i=s.puntos.length-1;i>=0;i--){
+      const p = s.puntos[i], x = X(p.dia);
+      if(i!==s.puntos.length-1 && ultX-x < 30) continue;
+      ultX = x;
+      rot.push({x:x, y:Y(p.pct)-10, txt:p.pct+"%"});
+    }
+  });
+  const porX = {};
+  rot.forEach(r=>{ const k = Math.round(r.x); (porX[k] = porX[k] || []).push(r); });
+  Object.keys(porX).forEach(k=>{
+    const gr = porX[k].sort((a,b)=>a.y-b.y);
+    for(let i=1;i<gr.length;i++) if(gr[i].y-gr[i-1].y < 14) gr[i].y = gr[i-1].y + 14;
+  });
+  rot.forEach(r=>{
+    const y = Math.max(TEND.T+9, Math.min(r.y, TEND.T+ph-2));
+    // halo blanco para que el numero se lea aunque caiga sobre la linea
+    g += '<text x="'+r.x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#1B2430"'
+       + ' stroke="#fff" stroke-width="3" paint-order="stroke">'+r.txt+'</text>';
+  });
+
+  cont.innerHTML = '<svg id="tendGraf" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" '
     + 'font-family="Segoe UI,system-ui,Arial,sans-serif">'+g+'<g id="tendHover"></g></svg>';
   const svg = document.getElementById("tendGraf");
   svg.addEventListener("mousemove", tendSeguir);
@@ -1317,35 +1371,40 @@ function pintarTendencia(){
 
   const noms = d.series.map(s=>s.nombre);
   const lista = noms.length<2 ? noms.join("") : noms.slice(0,-1).join(", ")+" y "+noms[noms.length-1];
+  const n = d.series[0].puntos.length;
   pie.textContent = "Cumplimiento = (Inicial - pendientes) / Inicial  ·  "+nombreModos()
-    + "  ·  "+lista+"  ·  "+n+(n===1?" corte":" cortes");
+    + "  ·  "+lista+"  ·  "+n+(n===1?" corte en ":" cortes en ")+nombreMes(d.mes);
 }
 
 /* Guia vertical y recuadro con el valor de cada proceso en el corte mas cercano */
 function tendSeguir(ev){
   const svg = document.getElementById("tendGraf");
   const cap = document.getElementById("tendHover");
-  if(!svg || !cap || !_tendDatos) return;
+  const d = _tendDatos;
+  if(!svg || !cap || !d || !d.series.length) return;
   const r = svg.getBoundingClientRect();
   if(!r.width) return;
-  const x = (ev.clientX - r.left) * (TEND.W / r.width);
-  const n = _tendDatos.cortes.length;
-  const pw = TEND.W - TEND.L - TEND.R;
-  let i = n<2 ? 0 : Math.round((x - TEND.L) / (pw/(n-1)));
-  i = Math.max(0, Math.min(n-1, i));
-  const cx = tendX(i,n), ser = _tendDatos.series;
-  const an = 196, al = 28 + ser.length*16;
-  const bx = (cx > TEND.W/2) ? cx-an-10 : cx+10;
-  const by = Math.min(TEND.T+6, TEND.H-TEND.B-al);
+  const x = (ev.clientX - r.left) * (d.W / r.width);
+  let dia = null, mejor = 1e9;
+  d.series[0].puntos.forEach(p=>{ const q = Math.abs(d.X(p.dia)-x); if(q<mejor){ mejor=q; dia=p.dia; } });
+  if(dia===null) return;
+  const cx = d.X(dia);
+  const filas = [];
+  d.series.forEach(s=>{ const p = s.puntos.find(q=>q.dia===dia); if(p) filas.push({s:s, p:p}); });
+  if(!filas.length) return;
+  const an = 192, al = 28 + filas.length*16;
+  let bx = (cx > d.W/2) ? cx-an-10 : cx+10;
+  bx = Math.max(2, Math.min(bx, d.W-an-2));
+  const by = TEND.T+4;
   let h = '<line x1="'+cx+'" y1="'+TEND.T+'" x2="'+cx+'" y2="'+(TEND.H-TEND.B)+'" stroke="#B9C2CC" stroke-width="1" stroke-dasharray="3 3"/>';
-  ser.forEach(s=>{ h += '<circle cx="'+cx+'" cy="'+tendY(s.puntos[i].pct)+'" r="5.5" fill="'+s.color+'" stroke="#fff" stroke-width="2"/>'; });
+  filas.forEach(f=>{ h += '<circle cx="'+cx+'" cy="'+d.Y(f.p.pct)+'" r="6" fill="'+f.s.color+'" stroke="#fff" stroke-width="2"/>'; });
   h += '<rect x="'+bx+'" y="'+by+'" width="'+an+'" height="'+al+'" rx="6" fill="#fff" stroke="#D5DBE1"/>'
-     + '<text x="'+(bx+10)+'" y="'+(by+18)+'" font-size="12" font-weight="700" fill="#1B2430">'+esc(fechaLarga(_tendDatos.cortes[i].f))+'</text>';
-  ser.forEach((s,k)=>{
+     + '<text x="'+(bx+10)+'" y="'+(by+18)+'" font-size="12" font-weight="700" fill="#1B2430">'+esc(fechaLarga(filas[0].p.f))+'</text>';
+  filas.forEach((f,k)=>{
     const y = by+36+k*16;
-    h += '<circle cx="'+(bx+14)+'" cy="'+(y-4)+'" r="4" fill="'+s.color+'"/>'
-       + '<text x="'+(bx+24)+'" y="'+y+'" font-size="12" fill="#667085">'+esc(s.nombre)
-       + ' <tspan font-weight="700" fill="#1B2430">'+s.puntos[i].pct+'%</tspan> · '+s.puntos[i].pend+' pend.</text>';
+    h += '<circle cx="'+(bx+14)+'" cy="'+(y-4)+'" r="4" fill="'+f.s.color+'"/>'
+       + '<text x="'+(bx+24)+'" y="'+y+'" font-size="12" fill="#667085">'+esc(f.s.nombre)
+       + ' <tspan font-weight="700" fill="#1B2430">'+f.p.pct+'%</tspan> · '+f.p.pend+' pend.</text>';
   });
   cap.innerHTML = h;
 }
@@ -2363,7 +2422,7 @@ function verVista(v){
     document.getElementById("vista"+x[0].toUpperCase()+x.slice(1)).style.display = (x===v)?"block":"none";
     document.getElementById("tab"+x[0].toUpperCase()+x.slice(1)).classList.toggle("on", x===v);
   });
-  if(v==="tablero") ajustarKpis();   // ya visible: se recalcula con el ancho real
+  if(v==="tablero"){ ajustarKpis(); pintarTendencia(); }   // ya visible: se recalcula con el ancho real
 }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
