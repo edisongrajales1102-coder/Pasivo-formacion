@@ -101,9 +101,22 @@ nav button.on{background:var(--fondo);color:var(--azul);font-weight:600}
 .kpi.ok .n{color:var(--verdeTxt)}
 
 /* ---------- Tendencia ---------- */
-.filaTablero{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin:16px 20px 40px}
-.filaTablero>.envoltura{margin:0;flex:0 0 auto}
-.tend{background:var(--panel);border:1px solid var(--linea);border-radius:8px;flex:1 1 440px;min-width:440px}
+.paneles{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin:16px 20px 0}
+.panelU{flex:0 0 auto;background:var(--panel);border:1px solid var(--linea);border-radius:8px;overflow:auto;max-width:100%;max-height:calc(100vh - 300px)}
+.panelU h4{margin:0;padding:7px 12px;background:var(--azul);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.3px;position:sticky;top:0;z-index:14}
+.panelU thead th{height:auto;padding:4px 8px;top:31px}
+.panelU th.esq,.panelU td.base{width:126px}
+.panelU th.ini{width:74px}
+.panelU th.act{width:88px;background:var(--azul2)}
+.panelU th.cum{width:86px}
+.panelU th.cum:last-child{width:106px}
+.panelU .sub{display:block;font-size:10px;font-weight:400;color:#E4ECF4}
+.panelU th.ini .sub{color:#EDEDED}
+.granTot{flex:0 0 auto;width:100%;background:var(--panel);border:1px solid var(--linea);border-radius:8px;overflow:auto}
+.granTot table.matriz{width:100%}
+.granTot td.base{width:126px}
+.granTot .rot{display:block;font-size:10px;font-weight:600;opacity:.8;letter-spacing:.2px}
+.tend{margin:16px 20px 40px;background:var(--panel);border:1px solid var(--linea);border-radius:8px}
 .tend-h{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--linea);flex-wrap:wrap}
 .tend-mes{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--suave)}
 .tend-mes span{min-width:104px;text-align:center}
@@ -327,8 +340,7 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
     <p class="detalle">Cada carga guarda un corte con su fecha. Se cuentan colaboradores únicos con al menos un curso vencido.</p>
   </div>
   <div id="kpis" class="kpis" style="display:none"></div>
-  <div class="filaTablero">
-  <div id="tabla" class="envoltura" style="display:none"></div>
+  <div id="tabla" class="paneles" style="display:none"></div>
 
   <div id="tendencia" class="tend" style="display:none">
     <div class="tend-h">
@@ -339,7 +351,6 @@ body[data-modo="visor"] .soloAdmin{display:none !important}
     <div class="tend-leg" id="tendLeg"></div>
     <div class="tend-svg" id="tendSvg"></div>
     <div class="tend-pie" id="tendPie"></div>
-  </div>
   </div>
 </section>
 
@@ -1077,7 +1088,7 @@ function pintar(){
   const hay = ST.cortes.length>0;
   document.getElementById("zonaCarga").style.display = hay?"none":"block";
   document.getElementById("kpis").style.display = hay?"flex":"none";
-  document.getElementById("tabla").style.display = hay?"block":"none";
+  document.getElementById("tabla").style.display = hay?"flex":"none";
   document.getElementById("tendencia").style.display = hay?"block":"none";
   document.getElementById("btnXls").disabled = !hay;
   document.getElementById("btnXlsx").disabled = !hay;
@@ -1116,80 +1127,72 @@ function pintar(){
 function ajustarKpis(){
   const kpis = document.getElementById("kpis");
   if(!kpis) return;
-  const tabla = document.querySelector("#tabla table.matriz");
-  if(!tabla){ kpis.style.width = ""; return; }   // sin cortes: ancho natural
-  const medido = Math.round(tabla.getBoundingClientRect().width);
-  // Si el tablero está en otra pestaña la tabla mide 0: se conserva el ancho que ya tenía.
+  const paneles = [...document.querySelectorAll("#tabla .panelU")];
+  if(!paneles.length){ kpis.style.width = ""; return; }   // sin cortes: ancho natural
+  // Ancho que ocupa la fila de paneles, para que KPIs y Total general queden alineados
+  let izq = Infinity, der = -Infinity;
+  paneles.forEach(p=>{ const r = p.getBoundingClientRect(); izq = Math.min(izq, r.left); der = Math.max(der, r.right); });
+  const medido = Math.round(der - izq);
+  // Si el tablero está en otra pestaña los paneles miden 0: se conserva el ancho que ya tenía.
   if(medido <= 0) return;
   const disponible = document.documentElement.clientWidth - 40;
-  kpis.style.width = Math.min(medido, disponible)+"px";
+  const ancho = Math.min(medido, disponible)+"px";
+  kpis.style.width = ancho;
+  const gt = document.getElementById("granTot");
+  if(gt) gt.style.width = ancho;
 }
 let _kpiTimer = null;
 window.addEventListener("resize", ()=>{ clearTimeout(_kpiTimer); _kpiTimer = setTimeout(()=>{ ajustarKpis(); pintarTendencia(); }, 150); });
 function kpi(n,l,ok){ return '<div class="kpi'+(ok?" ok":"")+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
 
+/* Un panel por unidad medida, en fila. Solo dos columnas de datos:
+   el corte Inicial y el último corte cargado (el día actual). */
 function html(inicial, resto, ultimo, cli){
-  const cols = resto;
   const ocultarCeros = document.getElementById("ocultarCeros").checked;
-  let h = '<table class="matriz"><thead><tr>';
-  h += '<th class="esq" rowspan="2">Aeropuerto</th>';
-  h += '<th class="ini" rowspan="2">Inicial<br><span style="font-weight:400;font-size:11px">'+fechaCorta(inicial.f)+'</span></th>';
-  h += '<th class="titulo" colspan="'+Math.max(cols.length,1)+'">Cortes diarios</th>';
-  h += '<th class="cum" rowspan="2">Cerrados</th><th class="cum" rowspan="2">Cumplimiento</th></tr><tr>';
-  if(!cols.length) h += '<th class="dia">—</th>';
-  cols.forEach(c=>{
-    h += '<th class="dia'+(esDomingo(c.f)?" dom":"")+'" title="'+fechaLarga(c.f)+'"><span class="dl">'+letraDia(c.f)+'</span>'+diaNum(c.f)+'</th>';
-  });
-  h += '</tr></thead><tbody>';
-
   const unidades = unidadesVisibles();
-  const anchoTotal = 4 + Math.max(cols.length,1);
-
+  let h = "";
   unidades.forEach(u=>{
     const bases = basesVisibles()
       .map(b=>({b:b, ini:valor(inicial,b,u,cli), act:valor(ultimo,b,u,cli)}))
       .filter(x=> !ocultarCeros || x.ini>0 || x.act>0)
       .sort((x,y)=> y.ini-x.ini || (x.b<y.b?-1:1));
     if(!bases.length) return;
-    h += '<tr class="sec"><td class="base" colspan="'+anchoTotal+'">'+UNI[u]+'</td></tr>';
-    bases.forEach(x=>{ h += fila(x.b, x.b, u, inicial, cols, ultimo, cli, ""); });
-    h += fila("__TOT__", "Total "+UNI[u], u, inicial, cols, ultimo, cli, "total");
+    h += '<div class="panelU"><h4>'+UNI[u]+'</h4><table class="matriz"><thead><tr>'
+       + '<th class="esq">Aeropuerto</th>'
+       + '<th class="ini">Inicial<span class="sub">'+fechaCorta(inicial.f)+'</span></th>'
+       + '<th class="act" title="'+fechaLarga(ultimo.f)+'">Día actual<span class="sub">'+fechaCorta(ultimo.f)+'</span></th>'
+       + '<th class="cum">Cerrados</th><th class="cum">Cumplimiento</th>'
+       + '</tr></thead><tbody>';
+    bases.forEach(x=>{ h += fila(x.b, x.b, u, inicial, ultimo, cli, ""); });
+    h += fila("__TOT__", "Total "+UNI[u], u, inicial, ultimo, cli, "total");
+    h += '</tbody></table></div>';
   });
-
-  h += filaTotalGeneral(inicial, cols, ultimo, cli, unidades);
-  h += '</tbody></table>';
-  return h;
+  if(!h) h = '<div class="panelU" style="padding:16px;color:var(--suave)">No hay datos para las unidades que se están midiendo.</div>';
+  return h + filaTotalGeneral(inicial, ultimo, cli, unidades);
 }
 
-function fila(base, etiqueta, u, inicial, cols, ultimo, cli, clase){
+function fila(base, etiqueta, u, inicial, ultimo, cli, clase){
   const esTot = base==="__TOT__";
   const v = c => esTot ? totalUnidad(c,u,cli) : valor(c,base,u,cli);
-  const ini = v(inicial);
+  const ini = v(inicial), act = v(ultimo), cerr = ini-act;
+  const cls = act<ini ? "baja" : (act===ini ? "igual" : "sube");
   let h = '<tr class="'+clase+'"><td class="base">'+etiqueta+'</td>';
   h += '<td class="inicial dato" data-base="'+base+'" data-u="'+u+'" data-f="'+inicial.f+'">'+ini+'</td>';
-  if(!cols.length) h += '<td>—</td>';
-  let prev = ini;
-  cols.forEach(c=>{
-    const n = v(c);
-    const cls = n<prev ? "baja" : (n===prev ? "igual" : "sube");
-    h += '<td class="dato '+cls+'" data-base="'+base+'" data-u="'+u+'" data-f="'+c.f+'">'+n+'</td>';
-    prev = n;
-  });
-  const act = v(ultimo), cerr = ini-act;
+  h += '<td class="dato '+cls+'" data-base="'+base+'" data-u="'+u+'" data-f="'+ultimo.f+'">'+act+'</td>';
   h += '<td class="cerr">'+cerr+'</td>';
   h += '<td class="pct '+(ini? (cerr/ini>=0.98?"baja":(cerr/ini>=0.8?"igual":"")) :"")+'">'+(ini? Math.round(cerr/ini*100)+"%" : "—")+'</td>';
   return h+'</tr>';
 }
 
-function filaTotalGeneral(inicial, cols, ultimo, cli, unidades){
+function filaTotalGeneral(inicial, ultimo, cli, unidades){
   const v = c => unidades.reduce((s,u)=>s+totalUnidad(c,u,cli),0);
-  const ini = v(inicial);
-  let h = '<tr class="granTotal"><td class="base">Total general</td><td>'+ini+'</td>';
-  if(!cols.length) h += '<td>—</td>';
-  cols.forEach(c=> h += '<td>'+v(c)+'</td>');
-  const act = v(ultimo), cerr = ini-act;
-  h += '<td class="cerr">'+cerr+'</td><td>'+(ini? Math.round(cerr/ini*100)+"%" : "—")+'</td></tr>';
-  return h;
+  const ini = v(inicial), act = v(ultimo), cerr = ini-act;
+  const cel = (txt, val, clase) => '<td'+(clase?' class="'+clase+'"':'')+'><span class="rot">'+txt+'</span>'+val+'</td>';
+  return '<div class="granTot" id="granTot"><table class="matriz"><tbody><tr class="granTotal">'
+    + '<td class="base">Total general</td>'
+    + cel("Inicial", ini) + cel("Día actual", act) + cel("Cerrados", cerr, "cerr")
+    + cel("Cumplimiento", (ini? Math.round(cerr/ini*100)+"%" : "—"))
+    + '</tr></tbody></table></div>';
 }
 
 /* Clic en una celda -> detalle */
