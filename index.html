@@ -561,7 +561,7 @@ function cambiarModo(m){
   ST.modos = ["v","p"].filter(x=>sel.has(x));
   guardar(); pintar();
 }
-let ST = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[], cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95};
+let ST = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[], cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95, metaMes:100};
 let detalleActual = null;
 let ordenDetalle = {col:null, dir:1};   // columna y sentido del orden de la ventana de detalle
 let vistaActual = "tablero";
@@ -689,7 +689,7 @@ function cargar(){
     const txt = localStorage.getItem(CLAVE);
     if(txt){
       const d = JSON.parse(txt);
-      ST = Object.assign({cortes:[],personas:{},mapa:{},inicial:null,detN:12,excluidas:[],excluirCarga:[],cursos:[],soloAplican:false,unidades:["R","P"],excepciones:{},modos:["v"], meta:95}, d);
+      ST = Object.assign({cortes:[],personas:{},mapa:{},inicial:null,detN:12,excluidas:[],excluirCarga:[],cursos:[],soloAplican:false,unidades:["R","P"],excepciones:{},modos:["v"], meta:95, metaMes:100}, d);
       if(!Array.isArray(ST.modos) || !ST.modos.length) ST.modos = [ (ST.modo==="p") ? "p" : "v" ];
     }
   }catch(e){ console.warn(e); }
@@ -1196,17 +1196,18 @@ const TEND_COL = {R:"#1A6FB5", P:"#C2690A", O:"#7A4FA3"};
 const TEND = {L:42, R:30, T:22, B:30, H:300, MIN:400};
 let _tendDatos = null, _tendMes = null;
 
+/* Punto de llegada de la rampa: lo que deberia estar cerrado el ultimo dia del mes */
 function metaValor(){
-  const m = Number(ST.meta);
-  return (isFinite(m) && m>=0 && m<=100) ? Math.round(m) : 95;
+  const m = Number(ST.metaMes);
+  return (isFinite(m) && m>=0 && m<=100) ? Math.round(m) : 100;
 }
 function cambiarMeta(){
   const el = document.getElementById("metaPct");
   let v = Math.round(Number(el.value));
-  if(!isFinite(v)) v = 95;
+  if(!isFinite(v)) v = 100;
   v = Math.max(0, Math.min(100, v));
   el.value = v;
-  ST.meta = v;
+  ST.metaMes = v;
   guardar();
   pintarTendencia();
 }
@@ -1280,7 +1281,7 @@ function pintarTendencia(){
 
   const meta = metaValor();
   leg.innerHTML = d.series.map(s=>'<span><i style="background:'+s.color+'"></i>'+esc(s.nombre)+'</span>').join("")
-    + '<span><i class="pun"></i>Meta '+meta+'%</span>';
+    + '<span><i class="pun"></i>Meta del mes</span>';
 
   // El SVG se dibuja a la medida real de la tarjeta para que el texto no se achique
   const W = Math.max(TEND.MIN, Math.round(cont.clientWidth) || TEND.MIN);
@@ -1306,9 +1307,14 @@ function pintarTendencia(){
     g += '<text x="'+X(i)+'" y="'+(TEND.T+ph+17)+'" text-anchor="middle" font-size="11" fill="#667085">'
        + letraDia(p.f)+' '+p.dia+'</text>';
   });
-  const ym = Y(meta);
-  g += '<line x1="'+TEND.L+'" y1="'+ym+'" x2="'+(W-TEND.R)+'" y2="'+ym+'" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="7 5"/>'
-     + '<text x="'+(W-TEND.R)+'" y="'+(ym-6)+'" text-anchor="end" font-size="11" font-weight="700" fill="#7A7A7A">Meta '+meta+'%</text>';
+  // Meta: rampa del mes. El dia 1 vale 0 y el ultimo dia del mes vale la meta.
+  const metaDe = dia => (dia / d.dias) * meta;
+  d.meta = meta; d.metaDe = metaDe;
+  const dRampa = pts.map((p,i)=> (i?"L":"M")+X(i).toFixed(1)+" "+Y(metaDe(p.dia)).toFixed(1)).join(" ");
+  g += '<path d="'+dRampa+'" fill="none" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="7 5" stroke-linecap="round"/>';
+  const yFin = Y(metaDe(pts[n-1].dia));
+  g += '<text x="'+(W-TEND.R)+'" y="'+(yFin-8)+'" text-anchor="end" font-size="11" font-weight="700" fill="#7A7A7A"'
+     + ' stroke="#fff" stroke-width="3" paint-order="stroke">Meta '+Math.round(metaDe(pts[n-1].dia))+'%</text>';
 
   d.series.forEach(s=>{
     let solido = "", saltos = "";
@@ -1377,7 +1383,7 @@ function tendSeguir(ev){
   const filas = [];
   d.series.forEach(s=>{ const p = s.puntos[idx]; if(p) filas.push({s:s, p:p}); });
   if(!filas.length) return;
-  const an = 192, al = 28 + filas.length*16;
+  const an = 196, al = 28 + (filas.length+1)*16;
   let bx = (cx > d.W/2) ? cx-an-10 : cx+10;
   bx = Math.max(2, Math.min(bx, d.W-an-2));
   const by = TEND.T+4;
@@ -1391,6 +1397,12 @@ function tendSeguir(ev){
        + '<text x="'+(bx+24)+'" y="'+y+'" font-size="12" fill="#667085">'+esc(f.s.nombre)
        + ' <tspan font-weight="700" fill="#1B2430">'+f.p.pct+'%</tspan> · '+f.p.pend+' pend.</text>';
   });
+  if(d.metaDe){
+    const ymeta = by+36+filas.length*16;
+    h += '<line x1="'+(bx+10)+'" y1="'+(ymeta-4)+'" x2="'+(bx+18)+'" y2="'+(ymeta-4)+'" stroke="#7A7A7A" stroke-width="2" stroke-dasharray="3 2"/>'
+       + '<text x="'+(bx+24)+'" y="'+ymeta+'" font-size="12" fill="#667085">Meta del día '
+       + '<tspan font-weight="700" fill="#1B2430">'+Math.round(d.metaDe(filas[0].p.dia))+'%</tspan></text>';
+  }
   cap.innerHTML = h;
 }
 
@@ -1706,7 +1718,7 @@ function borrarCorte(f){
 function cambiarDetN(){ ST.detN = Number(document.getElementById("detN").value); podarDetalle(); invalidarConteos(); guardar(); pintar(); }
 function borrarTodo(){
   if(!confirm("Se borran todos los cortes, la clasificación ajustada y el histórico guardado en este equipo. ¿Continuar?")) return;
-  ST = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[], cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95};
+  ST = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[], cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95, metaMes:100};
   localStorage.removeItem(CLAVE); invalidarBases(); invalidarConteos(); refrescarClientes(); pintar();
 }
 function pintarUso(){
@@ -1734,7 +1746,7 @@ document.getElementById("respaldo").addEventListener("change", e=>{
     try{
       const d = JSON.parse(String(fr.result));
       if(!d.cortes) throw new Error("El archivo no es un respaldo de esta herramienta.");
-      ST = Object.assign({cortes:[],personas:{},mapa:{},inicial:null,detN:12,excluidas:[],excluirCarga:[],cursos:[],soloAplican:false,unidades:["R","P"],excepciones:{},modos:["v"], meta:95}, d);
+      ST = Object.assign({cortes:[],personas:{},mapa:{},inicial:null,detN:12,excluidas:[],excluirCarga:[],cursos:[],soloAplican:false,unidades:["R","P"],excepciones:{},modos:["v"], meta:95, metaMes:100}, d);
       if(!Array.isArray(ST.modos) || !ST.modos.length) ST.modos = [ (ST.modo==="p") ? "p" : "v" ];
       invalidarBases(); invalidarConteos(); guardar(); refrescarClientes(); pintar();
       avisar("Respaldo restaurado: "+ST.cortes.length+" cortes.");
@@ -2256,7 +2268,7 @@ async function traerDeLaBase(){
       return;
     }
     const base = {cortes:[], personas:{}, mapa:{}, inicial:null, detN:12, excluidas:[], excluirCarga:[],
-                  cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95};
+                  cursos:[], soloAplican:false, unidades:["R","P"], excepciones:{}, modos:["v"], meta:95, metaMes:100};
     if(cfgDoc.exists){
       const txt = await leerTexto(cfgRef, cfgDoc.data());
       if(txt) Object.assign(base, JSON.parse(txt));
@@ -2287,7 +2299,7 @@ let _timerPub = null, _publicando = false, _pendiente = false;
 
 function cfgTexto(){
   return JSON.stringify({personas:ST.personas, mapa:ST.mapa, cursos:ST.cursos, excepciones:ST.excepciones,
-    unidades:ST.unidades, modos:ST.modos, inicial:ST.inicial, detN:ST.detN, meta:ST.meta,
+    unidades:ST.unidades, modos:ST.modos, inicial:ST.inicial, detN:ST.detN, meta:ST.meta, metaMes:ST.metaMes,
     excluidas:ST.excluidas, excluirCarga:ST.excluirCarga, soloAplican:ST.soloAplican});
 }
 function sellarPublicado(){
