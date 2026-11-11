@@ -1368,7 +1368,13 @@ function pintarTendencia(){
     + 'font-family="Segoe UI,system-ui,Arial,sans-serif">'+g+'<g id="tendHover"></g></svg>';
   const svg = document.getElementById("tendGraf");
   svg.addEventListener("mousemove", tendSeguir);
-  svg.addEventListener("mouseleave", ()=>{ const h=document.getElementById("tendHover"); if(h) h.innerHTML=""; });
+  svg.addEventListener("click", tendClic);
+  svg.style.cursor = "pointer";
+  svg.addEventListener("mouseleave", ()=>{
+    if(_tendFijoF) return;                       // hay un corte fijado: el recuadro se queda
+    const h = document.getElementById("tendHover"); if(h) h.innerHTML = "";
+  });
+  restaurarFijo();
 
   const noms = d.series.map(s=>s.nombre);
   const lista = noms.length<2 ? noms.join("") : noms.slice(0,-1).join(", ")+" y "+noms[noms.length-1];
@@ -1376,29 +1382,65 @@ function pintarTendencia(){
     + "  ·  "+lista+"  ·  "+n+(n===1?" corte en ":" cortes en ")+nombreMes(d.mes);
 }
 
-/* Guia vertical y recuadro con el valor de cada proceso en el corte mas cercano */
-function tendSeguir(ev){
-  const svg = document.getElementById("tendGraf");
-  const cap = document.getElementById("tendHover");
-  const d = _tendDatos;
-  if(!svg || !cap || !d || !d.series.length) return;
+/* Guia vertical y recuadro con el valor de cada proceso en un corte.
+   Al pasar el cursor sigue al mas cercano; al hacer clic queda fijo hasta el
+   siguiente clic. */
+let _tendFijoF = null;
+
+function idxDeEvento(ev){
+  const svg = document.getElementById("tendGraf"), d = _tendDatos;
+  if(!svg || !d || !d.series.length) return -1;
   const r = svg.getBoundingClientRect();
-  if(!r.width) return;
+  if(!r.width) return -1;
   const x = (ev.clientX - r.left) * (d.W / r.width);
   let idx = -1, mejor = 1e9;
   d.series[0].puntos.forEach((p,i)=>{ const q = Math.abs(d.X(i)-x); if(q<mejor){ mejor=q; idx=i; } });
-  if(idx<0) return;
-  const cx = d.X(idx);
+  return idx;
+}
+function tendSeguir(ev){
+  if(_tendFijoF) return;                 // mientras haya uno fijo el cursor no lo mueve
+  const i = idxDeEvento(ev);
+  if(i>=0) pintarCaja(i, false);
+}
+function tendClic(ev){
+  const i = idxDeEvento(ev);
+  if(i<0) return;
+  const f = _tendDatos.series[0].puntos[i].f;
+  if(_tendFijoF === f){ soltarFijo(); return; }   // clic en el mismo corte lo cierra
+  _tendFijoF = f;
+  pintarCaja(i, true);
+}
+function soltarFijo(){
+  _tendFijoF = null;
+  const h = document.getElementById("tendHover");
+  if(h) h.innerHTML = "";
+}
+/* Tras repintar (cambio de mes, filtro, tamaño) se vuelve a mostrar el corte fijado */
+function restaurarFijo(){
+  const d = _tendDatos;
+  if(!_tendFijoF || !d || !d.series.length) return;
+  const i = d.series[0].puntos.findIndex(p=>p.f===_tendFijoF);
+  if(i<0){ _tendFijoF = null; return; }        // ese corte ya no esta a la vista
+  pintarCaja(i, true);
+}
+function pintarCaja(idx, fijo){
+  const cap = document.getElementById("tendHover"), d = _tendDatos;
+  if(!cap || !d || !d.series.length) return;
   const filas = [];
   d.series.forEach(s=>{ const p = s.puntos[idx]; if(p) filas.push({s:s, p:p}); });
   if(!filas.length) return;
-  const an = 196, al = 28 + (filas.length+1)*16;
+  const cx = d.X(idx);
+  const an = 196, al = 28 + (filas.length+1)*16 + (fijo?14:0);
   let bx = (cx > d.W/2) ? cx-an-10 : cx+10;
   bx = Math.max(2, Math.min(bx, d.W-an-2));
   const by = TEND.T+4;
-  let h = '<line x1="'+cx+'" y1="'+TEND.T+'" x2="'+cx+'" y2="'+(TEND.H-TEND.B)+'" stroke="#B9C2CC" stroke-width="1" stroke-dasharray="3 3"/>';
-  filas.forEach(f=>{ h += '<circle cx="'+cx+'" cy="'+d.Y(f.p.pct)+'" r="6" fill="'+f.s.color+'" stroke="#fff" stroke-width="2"/>'; });
-  h += '<rect x="'+bx+'" y="'+by+'" width="'+an+'" height="'+al+'" rx="6" fill="#fff" stroke="#D5DBE1"/>'
+  let h = '<line x1="'+cx+'" y1="'+TEND.T+'" x2="'+cx+'" y2="'+(TEND.H-TEND.B)+'" stroke="'+(fijo?"#7A7A7A":"#B9C2CC")+'" stroke-width="1" stroke-dasharray="3 3"/>';
+  filas.forEach(f=>{
+    const cy = d.Y(f.p.pct);
+    if(fijo) h += '<circle cx="'+cx+'" cy="'+cy+'" r="9" fill="none" stroke="'+f.s.color+'" stroke-width="2" opacity=".55"/>';
+    h += '<circle cx="'+cx+'" cy="'+cy+'" r="6" fill="'+f.s.color+'" stroke="#fff" stroke-width="2"/>';
+  });
+  h += '<rect x="'+bx+'" y="'+by+'" width="'+an+'" height="'+al+'" rx="6" fill="#fff" stroke="'+(fijo?"#7A7A7A":"#D5DBE1")+'"/>'
      + '<text x="'+(bx+10)+'" y="'+(by+18)+'" font-size="12" font-weight="700" fill="#1B2430">'+esc(fechaLarga(filas[0].p.f))+'</text>';
   filas.forEach((f,k)=>{
     const y = by+36+k*16;
@@ -1412,8 +1454,12 @@ function tendSeguir(ev){
        + '<text x="'+(bx+24)+'" y="'+ymeta+'" font-size="12" fill="#667085">Meta del día '
        + '<tspan font-weight="700" fill="#1B2430">'+Math.round(d.metaDe(filas[0].p.dia))+'%</tspan></text>';
   }
+  if(fijo){
+    h += '<text x="'+(bx+10)+'" y="'+(by+al-8)+'" font-size="11" fill="#98A3B3">Clic otra vez para soltar</text>';
+  }
   cap.innerHTML = h;
 }
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && _tendFijoF) soltarFijo(); });
 
 /* ============================================================
    DETALLE POR CELDA
