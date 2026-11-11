@@ -1343,25 +1343,25 @@ function pintarTendencia(){
   });
   // Se busca sitio para cada numero: encima del punto, y si choca con otro ya
   // colocado (o con el rotulo de la meta), se prueba debajo y cada vez mas lejos.
-  const anchoDe = r => r.txt.length*6.6 + 4;
+  const anchoDe = r => r.w || (r.txt.length*8.1 + 4);
   const rotMeta = "Meta "+Math.round(metaDe(pts[n-1].dia))+"%";
-  const colocados = [{x: (W-TEND.R) - (rotMeta.length*6.6+4)/2, y: yFin-8, txt: rotMeta}];
+  const colocados = [{x: (W-TEND.R) - (rotMeta.length*6.6+4)/2, y: yFin-8, w: rotMeta.length*6.6+4, txt: rotMeta}];
   const choca = (r,y) => colocados.some(o=>
-      Math.abs(o.x-r.x) < (anchoDe(o)+anchoDe(r))/2 + 3 && Math.abs(o.y-y) < 13);
+      Math.abs(o.x-r.x) < (anchoDe(o)+anchoDe(r))/2 + 3 && Math.abs(o.y-y) < 16);
   rot.sort((a,b)=> a.x-b.x || a.py-b.py);
   rot.forEach(r=>{
-    const alto = TEND.T+9, bajo = TEND.T+ph-2;
-    const sitios = [r.py-10, r.py+17, r.py-24, r.py+31, r.py-38, r.py+45];
+    const alto = TEND.T+11, bajo = TEND.T+ph-2;
+    const sitios = [r.py-11, r.py+20, r.py-27, r.py+36, r.py-43, r.py+52];
     let y = sitios.find(v=> v>=alto && v<=bajo && !choca(r,v));
-    if(y===undefined) y = Math.max(alto, Math.min(r.py-10, bajo));
+    if(y===undefined) y = Math.max(alto, Math.min(r.py-11, bajo));
     r.y = y;
     colocados.push(r);
   });
   rot.forEach(r=>{
-    const rx = Math.max(TEND.L+2, Math.min(r.x, W-15));   // el ultimo no se sale de la tarjeta
+    const rx = Math.max(TEND.L+4, Math.min(r.x, W-20));   // el ultimo no se sale de la tarjeta
     // halo blanco para que el numero se lea aunque caiga sobre la linea
-    g += '<text x="'+rx.toFixed(1)+'" y="'+r.y.toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+r.color+'"'
-       + ' stroke="#fff" stroke-width="3" paint-order="stroke">'+r.txt+'</text>';
+    g += '<text x="'+rx.toFixed(1)+'" y="'+r.y.toFixed(1)+'" text-anchor="middle" font-size="13" font-weight="700" fill="'+r.color+'"'
+       + ' stroke="#fff" stroke-width="3.5" paint-order="stroke">'+r.txt+'</text>';
   });
 
   cont.innerHTML = '<svg id="tendGraf" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" '
